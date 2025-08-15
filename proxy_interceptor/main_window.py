@@ -26,6 +26,7 @@ class AsyncRunner(QThread):
         self.proxy_server = None
         self.loop = None
         self._proxy_running = False
+        self._stop_requested = False
         logger.debug("AsyncRunner initialized")
         
     def run(self):
@@ -36,7 +37,20 @@ class AsyncRunner(QThread):
             asyncio.set_event_loop(self.loop)
             logger.info("Async event loop created and set")
             self.loop_ready.emit()
-            self.loop.run_forever()
+            
+            # Run the event loop
+            try:
+                self.loop.run_forever()
+            except Exception as e:
+                logger.error(f"Error in event loop: {e}", exc_info=True)
+            finally:
+                # Clean up any remaining tasks
+                pending = asyncio.all_tasks(self.loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    self.loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                    
             logger.info("Async event loop stopped")
         except Exception as e:
             logger.error(f"Error in AsyncRunner: {e}", exc_info=True)
@@ -63,8 +77,16 @@ class AsyncRunner(QThread):
             logger.info("Starting proxy server coroutine")
             await self.proxy_server.start()
             self._proxy_running = True
+            self._stop_requested = False
             logger.info("Proxy server started successfully")
             self.proxy_started.emit()
+        except OSError as e:
+            if "address already in use" in str(e).lower():
+                logger.error("Port 8080 is already in use. Please close any applications using this port.")
+                self.proxy_error.emit("Port 8080 is already in use")
+            else:
+                logger.error(f"Error starting proxy: {e}", exc_info=True)
+                self.proxy_error.emit(str(e))
         except Exception as e:
             logger.error(f"Error starting proxy: {e}", exc_info=True)
             self.proxy_error.emit(str(e))
@@ -72,6 +94,7 @@ class AsyncRunner(QThread):
     def stop_proxy(self):
         """Stop the proxy server."""
         logger.info("Attempting to stop proxy server")
+        self._stop_requested = True
         if self.proxy_server and self.loop and self.loop.is_running():
             logger.debug("Scheduling proxy stop")
             asyncio.run_coroutine_threadsafe(self._stop_proxy(), self.loop)
@@ -82,7 +105,8 @@ class AsyncRunner(QThread):
         """Async method to stop proxy."""
         try:
             logger.info("Stopping proxy server coroutine")
-            await self.proxy_server.stop()
+            if self.proxy_server:
+                await self.proxy_server.stop()
             self._proxy_running = False
             logger.info("Proxy server stopped successfully")
             self.proxy_stopped.emit()
@@ -275,6 +299,8 @@ class MainWindow(QMainWindow):
             if self.start_proxy_btn.text() == "Stop Proxy":
                 logger.info("Stopping proxy server before exit")
                 self.async_runner.stop_proxy()
+                # Give it a moment to stop
+                self.async_runner.wait(1000)
             logger.info("Stopping AsyncRunner")
             self.async_runner.quit()
             self.async_runner.wait()

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import httpx
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import StreamingResponse
+import uvicorn
 
 from .models import HttpRequest, HttpResponse, InterceptedRequest
 
@@ -34,7 +34,8 @@ class ProxyServer:
         self.app = FastAPI(title="Proxy Interceptor")
         self.intercepted_requests: list[InterceptedRequest] = []
         self.is_running = False
-        self.server_task: Optional[asyncio.Task] = None
+        self.server = None
+        self.server_task = None
         
         logger.info("Initializing ProxyServer")
         self._setup_routes()
@@ -124,33 +125,41 @@ class ProxyServer:
             return
             
         logger.info(f"Starting proxy server on {self.config.host}:{self.config.port}")
-        import uvicorn
+        
+        # Configure uvicorn with proper shutdown handling
         config = uvicorn.Config(
             self.app,
             host=self.config.host,
             port=self.config.port,
-            log_level="info"
+            log_level="info",
+            access_log=False  # Reduce noise
         )
-        server = uvicorn.Server(config)
         
-        self.server_task = asyncio.create_task(server.serve())
+        self.server = uvicorn.Server(config)
+        self.server_task = asyncio.create_task(self.server.serve())
         self.is_running = True
         logger.info("Proxy server started successfully")
         
     async def stop(self):
         """Stop the proxy server."""
-        if not self.is_running or not self.server_task:
+        if not self.is_running or not self.server:
             logger.warning("Proxy server not running")
             return
             
         logger.info("Stopping proxy server")
-        self.server_task.cancel()
-        try:
-            await self.server_task
-        except asyncio.CancelledError:
-            logger.info("Proxy server task cancelled")
-            pass
+        
+        if self.server:
+            # Gracefully shutdown the server
+            self.server.should_exit = True
+            if self.server_task and not self.server_task.done():
+                self.server_task.cancel()
+                try:
+                    await self.server_task
+                except asyncio.CancelledError:
+                    logger.debug("Server task cancelled")
+        
         self.is_running = False
+        self.server = None
         self.server_task = None
         logger.info("Proxy server stopped")
         
