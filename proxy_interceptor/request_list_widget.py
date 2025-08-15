@@ -28,20 +28,6 @@ class RequestListWidget(QWidget):
         header.setFont(header_font)
         layout.addWidget(header)
         
-        # Controls
-        controls_layout = QHBoxLayout()
-        
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.clicked.connect(self._refresh_requests)
-        controls_layout.addWidget(self.refresh_btn)
-        
-        self.clear_btn = QPushButton("Clear")
-        self.clear_btn.clicked.connect(self._clear_requests)
-        controls_layout.addWidget(self.clear_btn)
-        
-        controls_layout.addStretch()
-        layout.addLayout(controls_layout)
-        
         # Request list
         self.request_list = QListWidget()
         self.request_list.itemClicked.connect(self._on_request_selected)
@@ -69,13 +55,3 @@ class RequestListWidget(QWidget):
         """Handle request selection."""
         request = item.data(Qt.ItemDataRole.UserRole)
         self.request_selected.emit(request)
-        
-    def _refresh_requests(self):
-        """Refresh the request list (placeholder for future implementation)."""
-        # In a real implementation, this would fetch new requests
-        pass
-        
-    def _clear_requests(self):
-        """Clear all requests."""
-        self.requests.clear()
-        self._update_list()

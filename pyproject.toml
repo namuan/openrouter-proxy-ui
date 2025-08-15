@@ -5,7 +5,18 @@ description = "A PyQt6 application for intercepting and displaying HTTP requests
 requires-python = ">=3.8"
 dependencies = [
     "PyQt6>=6.5.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
 ]
 
 [project.scripts]
 proxy-interceptor = "proxy_interceptor.main:main"
+
+[tool.ruff]
+line-length = 88
+target-version = "py38"
+
+[tool.ruff.format]
+quote-style = "double"
