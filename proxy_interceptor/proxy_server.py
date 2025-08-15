@@ -150,14 +150,48 @@ class ProxyServer:
                 headers={"WWW-Authenticate": "Bearer"},
             )
     
-    async def _stream_response_generator(self, api_response: httpx.Response):
-        """Async generator to stream chunks from the OpenRouter response."""
+    async def _stream_response_generator(self, api_response: httpx.Response, intercepted_request: InterceptedRequest = None):
+        """Async generator to stream chunks from the OpenRouter response while capturing content."""
+        captured_chunks = []
+        extracted_content = []
         try:
             async for chunk in api_response.aiter_bytes():
+                if intercepted_request:
+                    captured_chunks.append(chunk)
+                    # Parse SSE data to extract content
+                    try:
+                        chunk_text = chunk.decode('utf-8')
+                        for line in chunk_text.split('\n'):
+                            if line.startswith('data: ') and not line.startswith('data: [DONE]'):
+                                json_data = line[6:]  # Remove 'data: ' prefix
+                                if json_data.strip():
+                                    data = json.loads(json_data)
+                                    if 'choices' in data and len(data['choices']) > 0:
+                                        delta = data['choices'][0].get('delta', {})
+                                        content = delta.get('content', '')
+                                        if content:
+                                            extracted_content.append(content)
+                    except (json.JSONDecodeError, UnicodeDecodeError, KeyError, IndexError):
+                        # Skip malformed chunks
+                        pass
                 yield chunk
         except Exception as e:
             logger.error(f"Error while streaming response: {e}")
         finally:
+            # Update the intercepted request with both raw and extracted content
+            if intercepted_request and captured_chunks:
+                try:
+                    full_content = b''.join(captured_chunks).decode('utf-8')
+                    # Store extracted readable content instead of raw SSE data
+                    if extracted_content:
+                        readable_content = ''.join(extracted_content)
+                        intercepted_request.response.body = readable_content
+                        logger.debug(f"Captured and extracted {len(readable_content)} characters of readable content")
+                    else:
+                        intercepted_request.response.body = full_content
+                        logger.debug(f"Captured {len(full_content)} characters of raw streaming response")
+                except Exception as e:
+                    logger.error(f"Error capturing streaming content: {e}")
             await api_response.aclose()
         
     def _setup_routes(self):
@@ -230,13 +264,12 @@ class ProxyServer:
                         if api_response.status_code == 200:
                             logger.info(f"Streaming success with API key index {key_index}, model '{model_name}' (index {model_index})")
                             
-                            # For streaming, we can't capture the full response body
-                            # But we'll log the request and partial response info
+                            # For streaming, we'll capture the response body as it streams
                             http_response = HttpResponse(
                                 status_code=api_response.status_code,
                                 status_text=api_response.reason_phrase,
                                 headers=dict(api_response.headers),
-                                body="[Streaming response - not captured]"
+                                body="[Streaming in progress...]"
                             )
                             
                             if self.config.log_requests:
@@ -252,7 +285,7 @@ class ProxyServer:
                                         logger.exception("Error in on_intercept callback for streaming response")
                             
                             return StreamingResponse(
-                                self._stream_response_generator(api_response),
+                                self._stream_response_generator(api_response, intercepted),
                                 media_type="text/event-stream",
                                 headers={k: v for k, v in api_response.headers.items() 
                                         if k.lower() in ['content-type', 'content-encoding']}
