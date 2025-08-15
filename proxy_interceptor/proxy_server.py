@@ -149,14 +149,15 @@ class ProxyServer:
         logger.info("Stopping proxy server")
         
         if self.server:
-            # Gracefully shutdown the server
+            # Tell uvicorn to shut down gracefully
             self.server.should_exit = True
+            
+            # Wait for the server task to finish instead of cancelling it
             if self.server_task and not self.server_task.done():
-                self.server_task.cancel()
                 try:
                     await self.server_task
                 except asyncio.CancelledError:
-                    logger.debug("Server task cancelled")
+                    logger.debug("Server task was cancelled")
         
         self.is_running = False
         self.server = None

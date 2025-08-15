@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
 import logging
+from typing import Optional
 from .models import InterceptedRequest
 
 logger = logging.getLogger(__name__)
@@ -74,9 +75,8 @@ class RequestDetailsWidget(QWidget):
         layout.addWidget(self.tab_widget)
         logger.debug("RequestDetailsWidget UI setup complete")
         
-    def set_request(self, request: InterceptedRequest):
-        """Display details for the given request."""
-        logger.info(f"Setting request details for: {request.request.method} {request.request.url}")
+    def set_request(self, request: Optional[InterceptedRequest]):
+        """Display details for the given request. If None, clear UI."""
         self.current_request = request
         
         if request is None:
@@ -88,7 +88,9 @@ class RequestDetailsWidget(QWidget):
             self.response_headers.clear()
             self.response_body.clear()
             return
-            
+        
+        logger.info(f"Setting request details for: {request.request.method} {request.request.url}")
+        
         # Update header
         self.header_label.setText(
             f"{request.request.method} {request.request.url}"
@@ -113,3 +115,7 @@ class RequestDetailsWidget(QWidget):
         self.response_body.setPlainText(request.response.body)
         
         logger.debug("Request details updated successfully")
+    
+    def clear(self):
+        """Clear all displayed request details."""
+        self.set_request(None)
