@@ -1,7 +1,10 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
-                            QTextEdit, QTabWidget)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+                            QTextEdit, QSplitter)
 from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt
 import logging
+import json
+import xml.dom.minidom
 from typing import Optional
 from .models import InterceptedRequest
 
@@ -23,19 +26,24 @@ class RequestDetailsWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
-        # Header
-        self.header_label = QLabel("No request selected")
-        header_font = QFont()
-        header_font.setBold(True)
-        self.header_label.setFont(header_font)
-        layout.addWidget(self.header_label)
+        # Create horizontal splitter for side-by-side view
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Tab widget for request/response details
-        self.tab_widget = QTabWidget()
-        
-        # Request tab
+        # Request panel (left side)
         request_widget = QWidget()
         request_layout = QVBoxLayout(request_widget)
+        request_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Request title
+        request_title = QLabel("REQUEST")
+        request_title_font = QFont()
+        request_title_font.setBold(True)
+        request_title.setFont(request_title_font)
+        request_layout.addWidget(request_title)
+        
+        # Request status placeholder (for consistent spacing with response)
+        request_status_placeholder = QLabel("")
+        request_layout.addWidget(request_status_placeholder)
         
         # Request headers
         request_layout.addWidget(QLabel("Headers:"))
@@ -48,11 +56,19 @@ class RequestDetailsWidget(QWidget):
         self.request_body = QTextEdit()
         request_layout.addWidget(self.request_body)
         
-        self.tab_widget.addTab(request_widget, "Request")
+        splitter.addWidget(request_widget)
         
-        # Response tab
+        # Response panel (right side)
         response_widget = QWidget()
         response_layout = QVBoxLayout(response_widget)
+        response_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Response title
+        response_title = QLabel("RESPONSE")
+        response_title_font = QFont()
+        response_title_font.setBold(True)
+        response_title.setFont(response_title_font)
+        response_layout.addWidget(response_title)
         
         # Response status
         self.response_status = QLabel()
@@ -69,10 +85,64 @@ class RequestDetailsWidget(QWidget):
         self.response_body = QTextEdit()
         response_layout.addWidget(self.response_body)
         
-        self.tab_widget.addTab(response_widget, "Response")
+        splitter.addWidget(response_widget)
         
-        layout.addWidget(self.tab_widget)
+        # Set equal proportions for both panels
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        
+        layout.addWidget(splitter)
         logger.debug("RequestDetailsWidget UI setup complete")
+    
+    def _format_body_content(self, body: str, headers: dict) -> str:
+        """Format body content based on content-type header."""
+        if not body or not body.strip():
+            return body
+        
+        # Get content type from headers (case-insensitive)
+        content_type = ""
+        for key, value in headers.items():
+            if key.lower() == "content-type":
+                content_type = value.lower()
+                break
+        
+        try:
+            # JSON formatting
+            if "application/json" in content_type or "text/json" in content_type:
+                parsed = json.loads(body)
+                return json.dumps(parsed, indent=2, ensure_ascii=False)
+            
+            # XML formatting
+            elif "application/xml" in content_type or "text/xml" in content_type:
+                dom = xml.dom.minidom.parseString(body)
+                return dom.toprettyxml(indent="  ")
+            
+            # HTML formatting (basic indentation)
+            elif "text/html" in content_type:
+                return self._format_html(body)
+            
+            # Plain text or unknown - return as is
+            else:
+                return body
+                
+        except Exception as e:
+            logger.debug(f"Failed to format body content: {e}")
+            return body  # Return original if formatting fails
+    
+    def _format_html(self, html: str) -> str:
+        """Basic HTML formatting with indentation."""
+        try:
+            # Simple HTML formatting - add newlines after tags
+            import re
+            # Add newlines after closing tags
+            formatted = re.sub(r'(</[^>]+>)', r'\1\n', html)
+            # Add newlines after opening tags (but not self-closing)
+            formatted = re.sub(r'(<[^/>]+[^/]>)', r'\1\n', formatted)
+            # Clean up multiple newlines
+            formatted = re.sub(r'\n\s*\n', '\n', formatted)
+            return formatted.strip()
+        except Exception:
+            return html
         
     def set_request(self, request: Optional[InterceptedRequest]):
         """Display details for the given request. If None, clear UI."""
@@ -80,7 +150,6 @@ class RequestDetailsWidget(QWidget):
         
         if request is None:
             logger.debug("Clearing request details (None request)")
-            self.header_label.setText("No request selected")
             self.request_headers.clear()
             self.request_body.clear()
             self.response_status.clear()
@@ -90,17 +159,17 @@ class RequestDetailsWidget(QWidget):
         
         logger.info(f"Setting request details for: {request.request.method} {request.request.url}")
         
-        # Update header
-        self.header_label.setText(
-            f"{request.request.method} {request.request.url}"
-        )
-        
         # Update request details
         headers_text = "\n".join(
             f"{k}: {v}" for k, v in request.request.headers.items()
         )
         self.request_headers.setPlainText(headers_text)
-        self.request_body.setPlainText(request.request.body)
+        
+        # Format request body based on content type
+        formatted_request_body = self._format_body_content(
+            request.request.body, request.request.headers
+        )
+        self.request_body.setPlainText(formatted_request_body)
         
         # Update response details
         self.response_status.setText(
@@ -111,7 +180,12 @@ class RequestDetailsWidget(QWidget):
             f"{k}: {v}" for k, v in request.response.headers.items()
         )
         self.response_headers.setPlainText(headers_text)
-        self.response_body.setPlainText(request.response.body)
+        
+        # Format response body based on content type
+        formatted_response_body = self._format_body_content(
+            request.response.body, request.response.headers
+        )
+        self.response_body.setPlainText(formatted_response_body)
         
         logger.debug("Request details updated successfully")
     

@@ -36,6 +36,16 @@ def _load_auth_tokens() -> Set[str]:
     logger.info(f"Loaded {len(tokens)} allowed authentication tokens. Authentication enabled.")
     return tokens
 
+def _load_api_models() -> List[str]:
+    """Load OpenRouter API models from environment variable."""
+    models_str = os.environ.get("OPENROUTER_API_MODELS", "qwen/qwen3-coder:free,openai/gpt-oss-20b:free")
+    if not models_str:
+        logger.warning("OPENROUTER_API_MODELS environment variable not set. Will use original model from requests.")
+        return []
+    models = [model.strip() for model in models_str.split(',')]
+    logger.info(f"Loaded {len(models)} OpenRouter API models: {models}")
+    return models
+
 @dataclass
 class ProxyConfig:
     """Configuration for the proxy server."""
@@ -47,6 +57,7 @@ class ProxyConfig:
     # OpenRouter-specific configuration
     openrouter_api_keys: List[str] = None
     allowed_auth_tokens: Set[str] = None
+    openrouter_api_models: List[str] = None
     site_url: str = "http://localhost:8080"
     app_name: str = "OpenRouter Proxy Interceptor"
     
@@ -55,6 +66,8 @@ class ProxyConfig:
             self.openrouter_api_keys = _load_api_keys()
         if self.allowed_auth_tokens is None:
             self.allowed_auth_tokens = _load_auth_tokens()
+        if self.openrouter_api_models is None:
+            self.openrouter_api_models = _load_api_models()
         logger.info(f"ProxyConfig initialized: {self}")
 
 
@@ -77,6 +90,10 @@ class ProxyServer:
         self._current_key_index = 0
         self._key_lock = asyncio.Lock()
         
+        # Model rotation state
+        self._current_model_index = 0
+        self._model_lock = asyncio.Lock()
+        
         # HTTP client for forwarding requests
         self._client = None
         
@@ -91,6 +108,15 @@ class ProxyServer:
                 raise HTTPException(status_code=503, detail="No OpenRouter API keys configured")
             idx = self._current_key_index
             self._current_key_index = (self._current_key_index + 1) % len(self.config.openrouter_api_keys)
+            return idx
+    
+    async def _get_next_model_index(self) -> int:
+        """Safely get the next model index for round-robin rotation."""
+        async with self._model_lock:
+            if not self.config.openrouter_api_models:
+                raise HTTPException(status_code=503, detail="No OpenRouter API models configured")
+            idx = self._current_model_index
+            self._current_model_index = (self._current_model_index + 1) % len(self.config.openrouter_api_models)
             return idx
     
     async def _verify_token(self, authorization: Optional[str] = Header(None)):
@@ -148,29 +174,40 @@ class ProxyServer:
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid JSON body")
             
+            # Store original model for reference
+            original_model = request_data.get("model", "")
+            
             is_streaming = request_data.get("stream", False)
-            model_name = request_data.get("model", "unknown_model")
             
-            # Get request body as string for logging
-            body_str = json.dumps(request_data)
+            # Use first available API key (no rotation for keys anymore)
+            if not self.config.openrouter_api_keys:
+                raise HTTPException(status_code=503, detail="No OpenRouter API keys configured")
+            api_key = self.config.openrouter_api_keys[0]
             
-            # Create HttpRequest for logging
-            http_request = HttpRequest(
-                timestamp=datetime.now(),
-                method=request.method,
-                url=str(request.url),
-                headers=dict(request.headers),
-                body=body_str
-            )
-            
-            start_key_index = await self._get_next_key_index()
+            # Start with current model (don't advance until there's an error)
+            current_model_index = self._current_model_index
             last_error_status = 500
-            last_error_detail = "All API keys failed."
-            num_keys = len(self.config.openrouter_api_keys)
+            last_error_detail = "All API models failed."
+            num_models = len(self.config.openrouter_api_models)
             
-            for i in range(num_keys):
-                key_index = (start_key_index + i) % num_keys
-                api_key = self.config.openrouter_api_keys[key_index]
+            for i in range(num_models):
+                model_index = (current_model_index + i) % num_models
+                model_name = self.config.openrouter_api_models[model_index]
+                
+                # Update request data with current model
+                request_data["model"] = model_name
+                
+                # Get request body as string for logging (with updated model)
+                body_str = json.dumps(request_data)
+                
+                # Create HttpRequest for logging
+                http_request = HttpRequest(
+                    timestamp=datetime.now(),
+                    method=request.method,
+                    url=str(request.url),
+                    headers=dict(request.headers),
+                    body=body_str
+                )
                 
                 headers = {
                     "Authorization": f"Bearer {api_key}",
@@ -179,7 +216,7 @@ class ProxyServer:
                     "X-Title": self.config.app_name,
                 }
                 
-                logger.info(f"Attempting request for model '{model_name}' with key index {key_index} (Stream: {is_streaming})")
+                logger.info(f"Attempting request for model '{model_name}' (model index {model_index}) (Stream: {is_streaming})")
                 
                 try:
                     target_url = f"{self.config.target_base_url}/chat/completions"
@@ -192,7 +229,7 @@ class ProxyServer:
                         api_response = await self._client.send(req, stream=True)
                         
                         if api_response.status_code == 200:
-                            logger.info(f"Streaming success with key index {key_index}")
+                            logger.info(f"Streaming success with model '{model_name}' (index {model_index})")
                             
                             # For streaming, we can't capture the full response body
                             # But we'll log the request and partial response info
@@ -223,7 +260,7 @@ class ProxyServer:
                             )
                             
                         elif api_response.status_code == 429:
-                            error_detail = f"Rate limit exceeded for key index {key_index}"
+                            error_detail = f"Rate limit exceeded for model '{model_name}' (index {model_index})"
                             try:
                                 error_body = await api_response.aread()
                                 error_detail += f" Response: {error_body.decode()}"
@@ -235,12 +272,12 @@ class ProxyServer:
                             last_error_detail = error_detail
                         else:
                             error_body = await api_response.aread()
-                            error_detail = f"Error with key index {key_index}: Status {api_response.status_code}, Response: {error_body.decode()}"
+                            error_detail = f"Error with model '{model_name}' (index {model_index}): Status {api_response.status_code}, Response: {error_body.decode()}"
                             await api_response.aclose()
                             logger.error(error_detail)
                             last_error_status = api_response.status_code
                             last_error_detail = error_detail
-                            if i == num_keys - 1:
+                            if i == num_models - 1:
                                 raise HTTPException(status_code=last_error_status, detail=last_error_detail)
                     else:
                         # Make non-streaming request
@@ -249,7 +286,7 @@ class ProxyServer:
                         )
                         
                         if api_response.status_code == 200:
-                            logger.info(f"Non-streaming success with key index {key_index}")
+                            logger.info(f"Non-streaming success with model '{model_name}' (index {model_index})")
                             
                             # Create response object for logging
                             http_response = HttpResponse(
@@ -274,7 +311,7 @@ class ProxyServer:
                             return JSONResponse(content=api_response.json(), status_code=api_response.status_code)
                             
                         elif api_response.status_code == 429:
-                            error_detail = f"Rate limit exceeded for key index {key_index}"
+                            error_detail = f"Rate limit exceeded for model '{model_name}' (index {model_index})"
                             try:
                                 error_detail += f" Response: {api_response.text}"
                             except Exception: 
@@ -283,31 +320,33 @@ class ProxyServer:
                             last_error_status = 429
                             last_error_detail = error_detail
                         else:
-                            error_detail = f"Error with key index {key_index}: Status {api_response.status_code}, Response: {api_response.text}"
+                            error_detail = f"Error with model '{model_name}' (index {model_index}): Status {api_response.status_code}, Response: {api_response.text}"
                             logger.error(error_detail)
                             last_error_status = api_response.status_code
                             last_error_detail = error_detail
-                            if i == num_keys - 1:
+                            if i == num_models - 1:
                                 raise HTTPException(status_code=last_error_status, detail=last_error_detail)
                 
                 except httpx.RequestError as e:
-                    error_detail = f"HTTPX Request Error with key index {key_index}: {e.__class__.__name__} - {e}"
+                    error_detail = f"HTTPX Request Error with model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
                     logger.error(error_detail)
                     last_error_status = 503
                     last_error_detail = error_detail
-                    if i == num_keys - 1:
+                    if i == num_models - 1:
                         raise HTTPException(status_code=last_error_status, detail=last_error_detail)
                 
                 except Exception as e:
-                    error_detail = f"Unexpected error processing request with key index {key_index}: {e.__class__.__name__} - {e}"
+                    error_detail = f"Unexpected error processing request with model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
                     logger.exception(error_detail)
                     last_error_status = 500
                     last_error_detail = error_detail
-                    if i == num_keys - 1:
+                    if i == num_models - 1:
                         raise HTTPException(status_code=last_error_status, detail=last_error_detail)
             
-            # If we get here, all keys failed
-            logger.error(f"All {num_keys} API keys failed for the request")
+            # If we get here, all models failed - advance to next model for future requests
+            async with self._model_lock:
+                self._current_model_index = (self._current_model_index + 1) % len(self.config.openrouter_api_models)
+            logger.error(f"All {num_models} API models failed for the request")
             raise HTTPException(status_code=last_error_status, detail=last_error_detail)
         
         @self.app.get("/v1/models")
