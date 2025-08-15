@@ -1,18 +1,21 @@
 import asyncio
 import logging
-import sys
 from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget,
+from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QWidget,
                              QPushButton, QHBoxLayout, QMessageBox, QSplitter)
 
 from .proxy_server import ProxyServer, ProxyConfig
 from .request_list_widget import RequestListWidget
 from .request_details_widget import RequestDetailsWidget
-from .mock_data import generate_mock_data
 
 logger = logging.getLogger(__name__)
+
+
+class InterceptBridge(QObject):
+    """Signal bridge to safely emit intercepted requests to the UI thread."""
+    request_intercepted = pyqtSignal(object)  # emits InterceptedRequest
 
 
 class AsyncRunner(QThread):
@@ -28,6 +31,7 @@ class AsyncRunner(QThread):
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.proxy_server: Optional[ProxyServer] = None
         self._start_requested = False
+        self.bridge = InterceptBridge()
         
     def run(self):
         """Run the async event loop in this thread."""
@@ -58,13 +62,18 @@ class AsyncRunner(QThread):
         try:
             if self.proxy_server is None:
                 config = ProxyConfig()
-                self.proxy_server = ProxyServer(config)
+                self.proxy_server = ProxyServer(config, on_intercept=self._on_intercept)
             
             await self.proxy_server.start()
             self.proxy_started.emit()
         except Exception as e:
             logger.error(f"Failed to start proxy: {e}", exc_info=True)
             self.proxy_error.emit(str(e))
+    
+    def _on_intercept(self, intercepted):
+        """Called by ProxyServer thread when a request is intercepted."""
+        # This callback runs in the proxy thread context; emit via signal to UI thread
+        self.bridge.request_intercepted.emit(intercepted)
     
     def stop_proxy(self):
         """Stop the proxy server."""
@@ -115,7 +124,7 @@ class MainWindow(QMainWindow):
         
         logger.info("Initializing MainWindow")
         self._setup_ui()
-        self._load_initial_data()
+        self._auto_start_proxy()
         
     def _setup_ui(self):
         """Set up the user interface."""
@@ -163,12 +172,10 @@ class MainWindow(QMainWindow):
         
         logger.debug("UI setup complete")
     
-    def _load_initial_data(self):
-        """Load initial mock data."""
-        logger.info("Loading initial mock data")
-        mock_requests = generate_mock_data()
-        self.request_list_widget.set_requests(mock_requests)
-        logger.info(f"Loaded {len(mock_requests)} mock requests")
+    def _auto_start_proxy(self):
+        """Auto-start the proxy server when the application starts."""
+        logger.info("Auto-starting proxy server")
+        self._toggle_proxy()
     
     def _toggle_proxy(self):
         """Toggle the proxy server on/off."""
@@ -181,6 +188,10 @@ class MainWindow(QMainWindow):
             self.async_runner.proxy_started.connect(self._on_proxy_started)
             self.async_runner.proxy_stopped.connect(self._on_proxy_stopped)
             self.async_runner.proxy_error.connect(self._on_proxy_error)
+            # Connect live update signal
+            self.async_runner.bridge.request_intercepted.connect(self._on_request_intercepted)
+            # Queue the start request before starting the thread
+            self.async_runner._start_requested = True
             self.async_runner.start()
             return
             
@@ -214,6 +225,11 @@ class MainWindow(QMainWindow):
         """Called when a proxy error occurs."""
         logger.error(f"Proxy error: {error}")
         QMessageBox.critical(self, "Proxy Error", f"Proxy error: {error}")
+    
+    def _on_request_intercepted(self, intercepted):
+        """Live-update the UI when a new request is intercepted."""
+        logger.info("New intercepted request received; updating UI list")
+        self.request_list_widget.add_request(intercepted)
     
     def _refresh_requests(self):
         """Refresh the request list."""

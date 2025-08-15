@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QListWidget, QListWidgetItem, QPushButton)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
+                            QListWidget, QListWidgetItem)
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import logging
@@ -44,6 +44,20 @@ class RequestListWidget(QWidget):
         logger.info(f"Setting {len(requests)} requests in list widget")
         self.requests = requests
         self._update_list()
+        
+    def add_request(self, request: InterceptedRequest):
+        """Append a single intercepted request to the list and UI."""
+        self.requests.append(request)
+        item = QListWidgetItem()
+        item.setText(
+            f"[{request.request.timestamp.strftime('%H:%M:%S')}] "
+            f"{request.request.method} {request.request.url}"
+        )
+        item.setData(Qt.ItemDataRole.UserRole, request)
+        self.request_list.addItem(item)
+        logger.debug(
+            f"Appended request to list: {request.request.method} {request.request.url}"
+        )
         
     def _update_list(self):
         """Update the list widget with current requests."""

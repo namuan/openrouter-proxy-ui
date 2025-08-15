@@ -1,6 +1,5 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-                            QTextEdit, QTabWidget, QSplitter)
-from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, 
+                            QTextEdit, QTabWidget)
 from PyQt6.QtGui import QFont
 import logging
 from typing import Optional
