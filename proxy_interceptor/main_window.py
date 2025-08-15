@@ -2,15 +2,15 @@ import asyncio
 import logging
 from typing import Optional
 
-from PyQt6.QtCore import QThread, pyqtSignal, QObject
+from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt
 from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QWidget,
-                             QPushButton, QHBoxLayout, QMessageBox, QSplitter, QLabel)
+                             QPushButton, QHBoxLayout, QMessageBox, QSplitter, QLabel, QTabWidget, QApplication)
 from PyQt6.QtGui import QPainter, QColor
-from PyQt6.QtCore import Qt
 
 from .proxy_server import ProxyServer, ProxyConfig
 from .request_list_widget import RequestListWidget
 from .request_details_widget import RequestDetailsWidget
+from .config_widget import ConfigWidget
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,24 @@ class AsyncRunner(QThread):
         """Async implementation to start the proxy server."""
         try:
             if self.proxy_server is None:
-                config = ProxyConfig()
+                # Get configuration from the main window's config widget
+                main_window = None
+                for widget in QApplication.allWidgets():
+                    if isinstance(widget, MainWindow):
+                        main_window = widget
+                        break
+                        
+                if main_window and main_window.config_widget.has_valid_config():
+                    # Use configuration from config widget
+                    config = ProxyConfig(
+                        openrouter_api_keys=main_window.config_widget.get_api_keys(),
+                        openrouter_api_models=main_window.config_widget.get_api_models(),
+                        allowed_auth_tokens=main_window.config_widget.get_auth_tokens()
+                    )
+                else:
+                    # No valid configuration available
+                    raise Exception("No valid configuration found. Please configure API keys and models in the Configuration tab.")
+                    
                 self.proxy_server = ProxyServer(config, on_intercept=self._on_intercept)
             
             await self.proxy_server.start()
@@ -161,8 +178,15 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.async_runner: Optional[AsyncRunner] = None
-        self.setWindowTitle("Proxy Interceptor")
+        self.setWindowTitle("OpenRouter Proxy Interceptor")
         self.setGeometry(100, 100, 1200, 800)
+        
+        self.intercept_bridge = InterceptBridge()
+        self.intercept_bridge.request_intercepted.connect(self._on_request_intercepted)
+        
+        # Create configuration widget
+        self.config_widget = ConfigWidget()
+        self.config_widget.config_changed.connect(self._on_config_changed)
         
         logger.info("Initializing MainWindow")
         self._setup_ui()
@@ -192,7 +216,15 @@ class MainWindow(QMainWindow):
         self.clear_btn.clicked.connect(self._clear_requests)
         control_layout.addWidget(self.clear_btn)
         
+        control_layout.addStretch()
         main_layout.addLayout(control_layout)
+        
+        # Create tab widget
+        self.tab_widget = QTabWidget()
+        
+        # Main tab with request list and details
+        main_tab = QWidget()
+        main_tab_layout = QVBoxLayout(main_tab)
         
         # Create splitter for request list and details
         splitter = QSplitter()
@@ -210,7 +242,13 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)
         
-        main_layout.addWidget(splitter)
+        main_tab_layout.addWidget(splitter)
+        
+        # Add tabs
+        self.tab_widget.addTab(main_tab, "Requests")
+        self.tab_widget.addTab(self.config_widget, "Configuration")
+        
+        main_layout.addWidget(self.tab_widget)
         
         logger.debug("UI setup complete")
     
@@ -287,6 +325,16 @@ class MainWindow(QMainWindow):
     def _on_request_selected(self, request):
         """Handle request selection."""
         self.request_details_widget.set_request(request)
+    
+    def _on_config_changed(self):
+        """Handle configuration changes."""
+        logger.debug("Configuration changed")
+        # If proxy is running, we might want to restart it with new config
+        # For now, just log the change
+        if self.config_widget.has_valid_config():
+            logger.info(f"Configuration updated: {len(self.config_widget.get_api_keys())} keys, {len(self.config_widget.get_api_models())} models")
+        else:
+            logger.warning("Configuration is incomplete - missing API keys or models")
     
     def closeEvent(self, event):
         """Handle window close event."""

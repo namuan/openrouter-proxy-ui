@@ -16,35 +16,7 @@ from .models import HttpRequest, HttpResponse, InterceptedRequest
 logger = logging.getLogger(__name__)
 
 # Environment variable loading helper
-def _load_api_keys() -> List[str]:
-    """Load OpenRouter API keys from environment variable."""
-    keys_str = os.environ.get("OPENROUTER_API_KEY", "")
-    if not keys_str:
-        logger.warning("OPENROUTER_API_KEY environment variable not set. Proxy will fail requests without keys.")
-        return []
-    keys = [key.strip() for key in keys_str.split(',')]
-    logger.info(f"Loaded {len(keys)} OpenRouter API keys")
-    return keys
-
-def _load_auth_tokens() -> Set[str]:
-    """Load allowed authentication tokens from environment variable."""
-    tokens_str = os.environ.get("ALLOWED_AUTH_TOKENS", "")
-    if not tokens_str:
-        logger.info("ALLOWED_AUTH_TOKENS not set. Authentication disabled.")
-        return set()
-    tokens = {token.strip() for token in tokens_str.split(',')}
-    logger.info(f"Loaded {len(tokens)} allowed authentication tokens. Authentication enabled.")
-    return tokens
-
-def _load_api_models() -> List[str]:
-    """Load OpenRouter API models from environment variable."""
-    models_str = os.environ.get("OPENROUTER_API_MODELS", "qwen/qwen3-coder:free,openai/gpt-oss-20b:free")
-    if not models_str:
-        logger.warning("OPENROUTER_API_MODELS environment variable not set. Will use original model from requests.")
-        return []
-    models = [model.strip() for model in models_str.split(',')]
-    logger.info(f"Loaded {len(models)} OpenRouter API models: {models}")
-    return models
+# Environment variable loading functions removed - configuration now comes from config widget only
 
 @dataclass
 class ProxyConfig:
@@ -62,13 +34,15 @@ class ProxyConfig:
     app_name: str = "OpenRouter Proxy Interceptor"
     
     def __post_init__(self):
+        # Ensure we have lists/sets even if None provided
         if self.openrouter_api_keys is None:
-            self.openrouter_api_keys = _load_api_keys()
+            self.openrouter_api_keys = []
         if self.allowed_auth_tokens is None:
-            self.allowed_auth_tokens = _load_auth_tokens()
+            self.allowed_auth_tokens = set()
         if self.openrouter_api_models is None:
-            self.openrouter_api_models = _load_api_models()
-        logger.info(f"ProxyConfig initialized: {self}")
+            self.openrouter_api_models = []
+            
+        logger.info(f"ProxyConfig initialized with {len(self.openrouter_api_keys)} keys, {len(self.openrouter_api_models)} models")
 
 
 class ProxyServer:
