@@ -188,10 +188,6 @@ class MainWindow(QMainWindow):
         self.toggle_proxy_btn.clicked.connect(self._toggle_proxy)
         control_layout.addWidget(self.toggle_proxy_btn)
         
-        self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.clicked.connect(self._refresh_requests)
-        control_layout.addWidget(self.refresh_btn)
-        
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.clicked.connect(self._clear_requests)
         control_layout.addWidget(self.clear_btn)
@@ -279,14 +275,7 @@ class MainWindow(QMainWindow):
         """Live-update the UI when a new request is intercepted."""
         logger.info("New intercepted request received; updating UI list")
         self.request_list_widget.add_request(intercepted)
-    
-    def _refresh_requests(self):
-        """Refresh the request list."""
-        logger.info("Refresh button clicked")
-        if self.async_runner:
-            requests = self.async_runner.get_requests()
-            self.request_list_widget.set_requests(requests)
-    
+
     def _clear_requests(self):
         """Clear all requests."""
         logger.info("Clear button clicked")
