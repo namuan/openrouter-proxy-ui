@@ -6,8 +6,9 @@ from .main_window import MainWindow
 
 def main():
     """Main entry point for the application."""
-    QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
     
     app = QApplication(sys.argv)
     app.setApplicationName("Proxy Interceptor")
