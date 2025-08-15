@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 import logging
 from typing import List
+from urllib.parse import urlparse
 from .models import InterceptedRequest
 
 logger = logging.getLogger(__name__)
@@ -49,14 +50,18 @@ class RequestListWidget(QWidget):
         """Append a single intercepted request to the list and UI."""
         self.requests.append(request)
         item = QListWidgetItem()
+        # Extract path from URL
+        parsed_url = urlparse(request.request.url)
+        path = parsed_url.path if parsed_url.path else '/'
+        
         item.setText(
             f"[{request.request.timestamp.strftime('%H:%M:%S')}] "
-            f"{request.request.method} {request.request.url}"
+            f"{request.request.method} {path}"
         )
         item.setData(Qt.ItemDataRole.UserRole, request)
         self.request_list.addItem(item)
         logger.debug(
-            f"Appended request to list: {request.request.method} {request.request.url}"
+            f"Appended request to list: {request.request.method} {path}"
         )
         
     def _update_list(self):
@@ -66,16 +71,23 @@ class RequestListWidget(QWidget):
         
         for i, request in enumerate(self.requests):
             item = QListWidgetItem()
+            # Extract path from URL
+            parsed_url = urlparse(request.request.url)
+            path = parsed_url.path if parsed_url.path else '/'
+            
             item.setText(
                 f"[{request.request.timestamp.strftime('%H:%M:%S')}] "
-                f"{request.request.method} {request.request.url}"
+                f"{request.request.method} {path}"
             )
             item.setData(Qt.ItemDataRole.UserRole, request)
             self.request_list.addItem(item)
-            logger.debug(f"Added request {i+1} to list: {request.request.method} {request.request.url}")
+            logger.debug(f"Added request {i+1} to list: {request.request.method} {path}")
             
     def _on_request_selected(self, item: QListWidgetItem):
         """Handle request selection."""
         request = item.data(Qt.ItemDataRole.UserRole)
-        logger.info(f"Request selected from list: {request.request.method} {request.request.url}")
+        # Extract path from URL for logging
+        parsed_url = urlparse(request.request.url)
+        path = parsed_url.path if parsed_url.path else '/'
+        logger.info(f"Request selected from list: {request.request.method} {path}")
         self.request_selected.emit(request)
