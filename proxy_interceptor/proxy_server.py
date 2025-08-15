@@ -179,10 +179,9 @@ class ProxyServer:
             
             is_streaming = request_data.get("stream", False)
             
-            # Use first available API key (no rotation for keys anymore)
-            if not self.config.openrouter_api_keys:
-                raise HTTPException(status_code=503, detail="No OpenRouter API keys configured")
-            api_key = self.config.openrouter_api_keys[0]
+            # Get next API key using round-robin rotation
+            key_index = await self._get_next_key_index()
+            api_key = self.config.openrouter_api_keys[key_index]
             
             # Start with current model (don't advance until there's an error)
             current_model_index = self._current_model_index
@@ -216,7 +215,7 @@ class ProxyServer:
                     "X-Title": self.config.app_name,
                 }
                 
-                logger.info(f"Attempting request for model '{model_name}' (model index {model_index}) (Stream: {is_streaming})")
+                logger.info(f"Attempting request with API key index {key_index}, model '{model_name}' (model index {model_index}) (Stream: {is_streaming})")
                 
                 try:
                     target_url = f"{self.config.target_base_url}/chat/completions"
@@ -229,7 +228,7 @@ class ProxyServer:
                         api_response = await self._client.send(req, stream=True)
                         
                         if api_response.status_code == 200:
-                            logger.info(f"Streaming success with model '{model_name}' (index {model_index})")
+                            logger.info(f"Streaming success with API key index {key_index}, model '{model_name}' (index {model_index})")
                             
                             # For streaming, we can't capture the full response body
                             # But we'll log the request and partial response info
@@ -260,7 +259,7 @@ class ProxyServer:
                             )
                             
                         elif api_response.status_code == 429:
-                            error_detail = f"Rate limit exceeded for model '{model_name}' (index {model_index})"
+                            error_detail = f"Rate limit exceeded for API key index {key_index}, model '{model_name}' (index {model_index})"
                             try:
                                 error_body = await api_response.aread()
                                 error_detail += f" Response: {error_body.decode()}"
@@ -272,7 +271,7 @@ class ProxyServer:
                             last_error_detail = error_detail
                         else:
                             error_body = await api_response.aread()
-                            error_detail = f"Error with model '{model_name}' (index {model_index}): Status {api_response.status_code}, Response: {error_body.decode()}"
+                            error_detail = f"Error with API key index {key_index}, model '{model_name}' (index {model_index}): Status {api_response.status_code}, Response: {error_body.decode()}"
                             await api_response.aclose()
                             logger.error(error_detail)
                             last_error_status = api_response.status_code
@@ -286,7 +285,7 @@ class ProxyServer:
                         )
                         
                         if api_response.status_code == 200:
-                            logger.info(f"Non-streaming success with model '{model_name}' (index {model_index})")
+                            logger.info(f"Non-streaming success with API key index {key_index}, model '{model_name}' (index {model_index})")
                             
                             # Create response object for logging
                             http_response = HttpResponse(
@@ -311,7 +310,7 @@ class ProxyServer:
                             return JSONResponse(content=api_response.json(), status_code=api_response.status_code)
                             
                         elif api_response.status_code == 429:
-                            error_detail = f"Rate limit exceeded for model '{model_name}' (index {model_index})"
+                            error_detail = f"Rate limit exceeded for API key index {key_index}, model '{model_name}' (index {model_index})"
                             try:
                                 error_detail += f" Response: {api_response.text}"
                             except Exception: 
@@ -320,7 +319,7 @@ class ProxyServer:
                             last_error_status = 429
                             last_error_detail = error_detail
                         else:
-                            error_detail = f"Error with model '{model_name}' (index {model_index}): Status {api_response.status_code}, Response: {api_response.text}"
+                            error_detail = f"Error with API key index {key_index}, model '{model_name}' (index {model_index}): Status {api_response.status_code}, Response: {api_response.text}"
                             logger.error(error_detail)
                             last_error_status = api_response.status_code
                             last_error_detail = error_detail
@@ -328,7 +327,7 @@ class ProxyServer:
                                 raise HTTPException(status_code=last_error_status, detail=last_error_detail)
                 
                 except httpx.RequestError as e:
-                    error_detail = f"HTTPX Request Error with model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
+                    error_detail = f"HTTPX Request Error with API key index {key_index}, model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
                     logger.error(error_detail)
                     last_error_status = 503
                     last_error_detail = error_detail
@@ -336,7 +335,7 @@ class ProxyServer:
                         raise HTTPException(status_code=last_error_status, detail=last_error_detail)
                 
                 except Exception as e:
-                    error_detail = f"Unexpected error processing request with model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
+                    error_detail = f"Unexpected error processing request with API key index {key_index}, model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
                     logger.exception(error_detail)
                     last_error_status = 500
                     last_error_detail = error_detail
