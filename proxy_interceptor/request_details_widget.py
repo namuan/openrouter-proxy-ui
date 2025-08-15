@@ -2,7 +2,10 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                             QTextEdit, QTabWidget, QSplitter)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
+import logging
 from .models import InterceptedRequest
+
+logger = logging.getLogger(__name__)
 
 
 class RequestDetailsWidget(QWidget):
@@ -11,10 +14,12 @@ class RequestDetailsWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.current_request = None
+        logger.debug("RequestDetailsWidget initialized")
         self._setup_ui()
         
     def _setup_ui(self):
         """Set up the user interface."""
+        logger.debug("Setting up RequestDetailsWidget UI")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
@@ -67,12 +72,15 @@ class RequestDetailsWidget(QWidget):
         self.tab_widget.addTab(response_widget, "Response")
         
         layout.addWidget(self.tab_widget)
+        logger.debug("RequestDetailsWidget UI setup complete")
         
     def set_request(self, request: InterceptedRequest):
         """Display details for the given request."""
+        logger.info(f"Setting request details for: {request.request.method} {request.request.url}")
         self.current_request = request
         
         if request is None:
+            logger.debug("Clearing request details (None request)")
             self.header_label.setText("No request selected")
             self.request_headers.clear()
             self.request_body.clear()
@@ -103,3 +111,5 @@ class RequestDetailsWidget(QWidget):
         )
         self.response_headers.setPlainText(headers_text)
         self.response_body.setPlainText(request.response.body)
+        
+        logger.debug("Request details updated successfully")

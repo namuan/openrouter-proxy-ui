@@ -1,10 +1,15 @@
 from datetime import datetime
+import logging
 from .models import InterceptedRequest, HttpRequest, HttpResponse
+
+logger = logging.getLogger(__name__)
 
 
 def generate_mock_data():
     """Generate mock intercepted requests for testing."""
-    return [
+    logger.info("Generating mock data")
+    
+    mock_data = [
         InterceptedRequest(
             request=HttpRequest(
                 timestamp=datetime.now(),
@@ -89,3 +94,6 @@ def generate_mock_data():
             )
         )
     ]
+    
+    logger.info(f"Generated {len(mock_data)} mock requests")
+    return mock_data

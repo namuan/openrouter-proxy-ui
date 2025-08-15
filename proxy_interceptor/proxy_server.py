@@ -11,6 +11,8 @@ from fastapi.responses import StreamingResponse
 
 from .models import HttpRequest, HttpResponse, InterceptedRequest
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class ProxyConfig:
@@ -19,6 +21,9 @@ class ProxyConfig:
     port: int = 8080
     target_base_url: str = "https://openrouter.ai/api/v1"
     log_requests: bool = True
+    
+    def __post_init__(self):
+        logger.info(f"ProxyConfig initialized: {self}")
 
 
 class ProxyServer:
@@ -31,21 +36,28 @@ class ProxyServer:
         self.is_running = False
         self.server_task: Optional[asyncio.Task] = None
         
+        logger.info("Initializing ProxyServer")
         self._setup_routes()
+        logger.info("ProxyServer routes configured")
         
     def _setup_routes(self):
         """Set up FastAPI routes."""
+        logger.debug("Setting up FastAPI routes")
         
         @self.app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
         async def proxy_request(request: Request, path: str):
             """Handle all incoming requests and forward them."""
+            logger.info(f"Received request: {request.method} {request.url}")
+            
             try:
                 # Build target URL
                 target_url = f"{self.config.target_base_url}/{path}"
+                logger.debug(f"Target URL: {target_url}")
                 
                 # Read request body
                 body = await request.body()
                 body_str = body.decode() if body else ""
+                logger.debug(f"Request body length: {len(body_str)}")
                 
                 # Create HttpRequest object
                 http_request = HttpRequest(
@@ -55,8 +67,10 @@ class ProxyServer:
                     headers=dict(request.headers),
                     body=body_str
                 )
+                logger.debug(f"Created HttpRequest: {http_request.method} {http_request.url}")
                 
                 # Forward request to target
+                logger.info(f"Forwarding request to: {target_url}")
                 async with httpx.AsyncClient() as client:
                     response = await client.request(
                         method=request.method,
@@ -66,6 +80,8 @@ class ProxyServer:
                         content=body if body else None,
                         params=request.query_params
                     )
+                
+                logger.info(f"Received response: {response.status_code} {response.reason_phrase}")
                 
                 # Create HttpResponse object
                 http_response = HttpResponse(
@@ -83,8 +99,10 @@ class ProxyServer:
                 
                 if self.config.log_requests:
                     self.intercepted_requests.append(intercepted)
+                    logger.info(f"Logged intercepted request: {len(self.intercepted_requests)} total")
                 
                 # Return response to client
+                logger.debug("Returning response to client")
                 return Response(
                     content=response.content,
                     status_code=response.status_code,
@@ -92,7 +110,7 @@ class ProxyServer:
                 )
                 
             except Exception as e:
-                logging.error(f"Proxy error: {e}")
+                logger.error(f"Proxy error: {e}", exc_info=True)
                 return Response(
                     content=json.dumps({"error": str(e)}),
                     status_code=500,
@@ -102,8 +120,10 @@ class ProxyServer:
     async def start(self):
         """Start the proxy server."""
         if self.is_running:
+            logger.warning("Proxy server already running")
             return
             
+        logger.info(f"Starting proxy server on {self.config.host}:{self.config.port}")
         import uvicorn
         config = uvicorn.Config(
             self.app,
@@ -115,24 +135,32 @@ class ProxyServer:
         
         self.server_task = asyncio.create_task(server.serve())
         self.is_running = True
+        logger.info("Proxy server started successfully")
         
     async def stop(self):
         """Stop the proxy server."""
         if not self.is_running or not self.server_task:
+            logger.warning("Proxy server not running")
             return
             
+        logger.info("Stopping proxy server")
         self.server_task.cancel()
         try:
             await self.server_task
         except asyncio.CancelledError:
+            logger.info("Proxy server task cancelled")
             pass
         self.is_running = False
         self.server_task = None
+        logger.info("Proxy server stopped")
         
     def get_requests(self) -> list[InterceptedRequest]:
         """Get all intercepted requests."""
+        logger.debug(f"Retrieved {len(self.intercepted_requests)} intercepted requests")
         return self.intercepted_requests.copy()
         
     def clear_requests(self):
         """Clear all intercepted requests."""
+        count = len(self.intercepted_requests)
         self.intercepted_requests.clear()
+        logger.info(f"Cleared {count} intercepted requests")
