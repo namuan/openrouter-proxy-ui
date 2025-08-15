@@ -1,9 +1,11 @@
 [project]
-name = "openrouter-proxy"
+name = "proxy-interceptor"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.12"
+description = "A PyQt6 application for intercepting and displaying HTTP requests"
+requires-python = ">=3.8"
 dependencies = [
-    "pyqt6>=6.9.1",
+    "PyQt6>=6.5.0",
 ]
+
+[project.scripts]
+proxy-interceptor = "proxy_interceptor.main:main"
