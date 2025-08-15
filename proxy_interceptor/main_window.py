@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QMainWindow, QSplitter, QVBoxLayout,
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from typing import List
 import asyncio
+import threading
 from .models import InterceptedRequest
 from .mock_data import generate_mock_data
 from .request_list_widget import RequestListWidget
@@ -10,33 +11,66 @@ from .request_details_widget import RequestDetailsWidget
 from .proxy_server import ProxyServer, ProxyConfig
 
 
-class ProxyWorker(QThread):
-    """Worker thread for proxy operations."""
+class AsyncRunner(QThread):
+    """Thread for running async operations."""
     
-    requests_updated = pyqtSignal(list)
+    proxy_started = pyqtSignal()
+    proxy_stopped = pyqtSignal()
+    proxy_error = pyqtSignal(str)
     
     def __init__(self):
         super().__init__()
         self.proxy_server = None
+        self.loop = None
         
     def run(self):
-        """Run the proxy worker."""
-        # This is a placeholder for async operations
-        pass
-        
+        """Run the async event loop."""
+        try:
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.loop.run_forever()
+        except Exception as e:
+            self.proxy_error.emit(str(e))
+            
     def start_proxy(self):
-        """Start the proxy server."""
+        """Start the proxy server in the async thread."""
         if not self.proxy_server:
             config = ProxyConfig(host="127.0.0.1", port=8080)
             self.proxy_server = ProxyServer(config)
             
-        # Start proxy in async context
-        asyncio.create_task(self.proxy_server.start())
+        asyncio.run_coroutine_threadsafe(self._start_proxy(), self.loop)
         
+    async def _start_proxy(self):
+        """Async method to start proxy."""
+        try:
+            await self.proxy_server.start()
+            self.proxy_started.emit()
+        except Exception as e:
+            self.proxy_error.emit(str(e))
+            
     def stop_proxy(self):
         """Stop the proxy server."""
+        if self.proxy_server and self.loop:
+            asyncio.run_coroutine_threadsafe(self._stop_proxy(), self.loop)
+            
+    async def _stop_proxy(self):
+        """Async method to stop proxy."""
+        try:
+            await self.proxy_server.stop()
+            self.proxy_stopped.emit()
+        except Exception as e:
+            self.proxy_error.emit(str(e))
+            
+    def get_requests(self) -> list[InterceptedRequest]:
+        """Get intercepted requests."""
         if self.proxy_server:
-            asyncio.create_task(self.proxy_server.stop())
+            return self.proxy_server.get_requests()
+        return []
+        
+    def clear_requests(self):
+        """Clear intercepted requests."""
+        if self.proxy_server:
+            self.proxy_server.clear_requests()
 
 
 class MainWindow(QMainWindow):
@@ -45,9 +79,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.requests: List[InterceptedRequest] = []
-        self.proxy_server = None
-        self.proxy_running = False
-        self.worker = None
+        self.async_runner = None
         self._setup_ui()
         self._load_initial_data()
         
@@ -117,42 +149,36 @@ class MainWindow(QMainWindow):
         
     def _toggle_proxy(self):
         """Toggle the proxy server on/off."""
-        if not self.proxy_running:
-            self._start_proxy()
+        if not self.async_runner:
+            self.async_runner = AsyncRunner()
+            self.async_runner.proxy_started.connect(self._on_proxy_started)
+            self.async_runner.proxy_stopped.connect(self._on_proxy_stopped)
+            self.async_runner.proxy_error.connect(self._on_proxy_error)
+            self.async_runner.start()
+            
+        if self.start_proxy_btn.text() == "Start Proxy":
+            self.async_runner.start_proxy()
         else:
-            self._stop_proxy()
+            self.async_runner.stop_proxy()
             
-    def _start_proxy(self):
-        """Start the proxy server."""
-        try:
-            import asyncio
-            config = ProxyConfig(host="127.0.0.1", port=8080)
-            self.proxy_server = ProxyServer(config)
-            
-            # Start in background
-            asyncio.create_task(self.proxy_server.start())
-            
-            self.proxy_running = True
-            self.start_proxy_btn.setText("Stop Proxy")
-            self.status_bar.showMessage("Proxy server started on port 8080")
-            
-        except Exception as e:
-            self.status_bar.showMessage(f"Failed to start proxy: {str(e)}")
-            
-    def _stop_proxy(self):
-        """Stop the proxy server."""
-        if self.proxy_server:
-            import asyncio
-            asyncio.create_task(self.proxy_server.stop())
-            
-        self.proxy_running = False
+    def _on_proxy_started(self):
+        """Handle proxy started."""
+        self.start_proxy_btn.setText("Stop Proxy")
+        self.status_bar.showMessage("Proxy server started on port 8080")
+        
+    def _on_proxy_stopped(self):
+        """Handle proxy stopped."""
         self.start_proxy_btn.setText("Start Proxy")
         self.status_bar.showMessage("Proxy server stopped")
         
+    def _on_proxy_error(self, error):
+        """Handle proxy error."""
+        self.status_bar.showMessage(f"Proxy error: {error}")
+        
     def _refresh_requests(self):
         """Refresh the request list from proxy server."""
-        if self.proxy_server:
-            self.requests = self.proxy_server.get_requests()
+        if self.async_runner:
+            self.requests = self.async_runner.get_requests()
             self.request_list.set_requests(self.requests)
             self.status_bar.showMessage(f"Refreshed {len(self.requests)} requests")
         else:
@@ -163,9 +189,9 @@ class MainWindow(QMainWindow):
             
     def _clear_requests(self):
         """Clear all requests."""
-        if self.proxy_server:
-            self.proxy_server.clear_requests()
-            self.requests = self.proxy_server.get_requests()
+        if self.async_runner:
+            self.async_runner.clear_requests()
+            self.requests = self.async_runner.get_requests()
         else:
             self.requests.clear()
         self.request_list.set_requests(self.requests)
@@ -180,7 +206,9 @@ class MainWindow(QMainWindow):
         
     def closeEvent(self, event):
         """Handle window close event."""
-        if self.proxy_server and self.proxy_running:
-            import asyncio
-            asyncio.create_task(self.proxy_server.stop())
+        if self.async_runner and self.async_runner.isRunning():
+            if self.start_proxy_btn.text() == "Stop Proxy":
+                self.async_runner.stop_proxy()
+            self.async_runner.quit()
+            self.async_runner.wait()
         event.accept()
