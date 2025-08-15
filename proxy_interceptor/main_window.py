@@ -4,13 +4,55 @@ from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QWidget,
-                             QPushButton, QHBoxLayout, QMessageBox, QSplitter)
+                             QPushButton, QHBoxLayout, QMessageBox, QSplitter, QLabel)
+from PyQt6.QtGui import QPainter, QColor
+from PyQt6.QtCore import Qt
 
 from .proxy_server import ProxyServer, ProxyConfig
 from .request_list_widget import RequestListWidget
 from .request_details_widget import RequestDetailsWidget
 
 logger = logging.getLogger(__name__)
+
+
+class StatusIndicator(QLabel):
+    """A colored dot widget to show proxy server status."""
+    
+    def __init__(self):
+        super().__init__()
+        self.status = "stopped"  # stopped, running, error
+        self.setFixedSize(16, 16)
+        self.setToolTip("Proxy Server Status")
+        
+    def set_status(self, status: str):
+        """Set the status and update the display."""
+        self.status = status
+        self.update()
+        
+        # Update tooltip
+        if status == "running":
+            self.setToolTip("Proxy Server: Running")
+        elif status == "error":
+            self.setToolTip("Proxy Server: Error")
+        else:
+            self.setToolTip("Proxy Server: Stopped")
+    
+    def paintEvent(self, event):
+        """Paint the status indicator dot."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Choose color based on status
+        if self.status == "running":
+            color = QColor(34, 197, 94)  # Green
+        elif self.status == "error":
+            color = QColor(239, 68, 68)  # Red
+        else:
+            color = QColor(156, 163, 175)  # Gray
+        
+        painter.setBrush(color)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawEllipse(2, 2, 12, 12)
 
 
 class InterceptBridge(QObject):
@@ -138,6 +180,10 @@ class MainWindow(QMainWindow):
         # Create control buttons
         control_layout = QHBoxLayout()
         
+        # Add status indicator
+        self.status_indicator = StatusIndicator()
+        control_layout.addWidget(self.status_indicator)
+        
         self.toggle_proxy_btn = QPushButton("Start Proxy")
         self.toggle_proxy_btn.clicked.connect(self._toggle_proxy)
         control_layout.addWidget(self.toggle_proxy_btn)
@@ -215,15 +261,18 @@ class MainWindow(QMainWindow):
         """Called when the proxy server has started."""
         logger.info("Proxy server started successfully")
         self.toggle_proxy_btn.setText("Stop Proxy")
+        self.status_indicator.set_status("running")
     
     def _on_proxy_stopped(self):
         """Called when the proxy server has stopped."""
         logger.info("Proxy server stopped")
         self.toggle_proxy_btn.setText("Start Proxy")
+        self.status_indicator.set_status("stopped")
     
     def _on_proxy_error(self, error: str):
         """Called when a proxy error occurs."""
         logger.error(f"Proxy error: {error}")
+        self.status_indicator.set_status("error")
         QMessageBox.critical(self, "Proxy Error", f"Proxy error: {error}")
     
     def _on_request_intercepted(self, intercepted):
