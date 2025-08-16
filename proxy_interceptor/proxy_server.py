@@ -39,6 +39,12 @@ class ProxyConfig:
             self.openrouter_api_keys = []
         if self.openrouter_api_models is None:
             self.openrouter_api_models = []
+        # Align site_url with configured port if default was left
+        try:
+            if not self.site_url or self.site_url.endswith(":8080") or self.site_url == "http://localhost:8080":
+                self.site_url = f"http://localhost:{self.port}"
+        except Exception:
+            pass
 
         logger.info(
             f"ProxyConfig initialized with {len(self.openrouter_api_keys)} keys, {len(self.openrouter_api_models)} models"

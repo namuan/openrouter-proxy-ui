@@ -12,7 +12,7 @@ from PyQt6.QtGui import QFont
 import json
 import logging
 from pathlib import Path
-from .config_widget import get_config_dir
+from .config_widget import get_config_dir, get_config_file_path
 
 logger = logging.getLogger(__name__)
 
@@ -27,17 +27,30 @@ class CheatsheetWidget(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.default_text = """Aider
+        # Load port from config (default to 8080)
+        port = 8080
+        try:
+            cfg_file = get_config_file_path()
+            if cfg_file.exists():
+                with open(cfg_file, "r") as f:
+                    cfg = json.load(f)
+                    port = int(cfg.get("port", 8080))
+        except Exception:
+            logger.exception("Failed to read port from config; using default 8080")
 
-$ aider --openai-api-base http://localhost:8080/v1 --model openai/custom
-
-RooCode
-
-Settings → API Provider (OpenRouter) → API Key (Anything) → Custom Base URL (http://127.0.0.1:8080/v1) → Model (Any)"""
+        self.default_text = self._generate_default_text(port)
         
         self._setup_ui()
         self._load_cheatsheet()
         logger.debug("CheatsheetWidget initialized")
+
+    def _generate_default_text(self, port: int) -> str:
+        return (
+            f"Aider\n\n"
+            f"$ aider --openai-api-base http://localhost:{port}/v1 --model openai/custom\n\n"
+            f"RooCode\n\n"
+            f"Settings → API Provider (OpenRouter) → API Key (Anything) → Custom Base URL (http://127.0.0.1:{port}/v1) → Model (Any)"
+        )
 
     def _setup_ui(self):
         """Set up the user interface."""
@@ -164,3 +177,13 @@ Settings → API Provider (OpenRouter) → API Key (Anything) → Custom Base UR
     def get_html_content(self) -> str:
         """Get the current cheatsheet content as HTML."""
         return self.text_edit.toHtml()
+
+    def update_port_and_save(self, port: int):
+        """Regenerate default text for the given port, set it, and save to disk."""
+        try:
+            self.default_text = self._generate_default_text(port)
+            self.text_edit.setPlainText(self.default_text)
+            # Save updated cheatsheet
+            self._save_cheatsheet()
+        except Exception:
+            logger.exception("Failed to update cheatsheet content for new port")

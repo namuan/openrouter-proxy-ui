@@ -16,6 +16,8 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QGroupBox,
     QMessageBox,
+    QSpinBox,
+    QLineEdit,
 )
 
 logger = logging.getLogger(__name__)
@@ -55,11 +57,13 @@ class ConfigWidget(QWidget):
     """Widget for configuring API keys and models."""
 
     config_changed = pyqtSignal()  # Emitted when configuration changes
+    config_saved = pyqtSignal()  # Emitted when configuration is saved
 
     def __init__(self):
         super().__init__()
         self.api_keys = []
         self.api_models = []
+        self.port = 8080
         self._setup_ui()
 
     def _setup_ui(self):
@@ -70,13 +74,9 @@ class ConfigWidget(QWidget):
         layout.setSpacing(15)
 
         # API Keys section
-        api_keys_group = QGroupBox("OpenRouter API Keys")
+        api_keys_group = QGroupBox("OpenRouter API Keys (One per line)")
         api_keys_layout = QVBoxLayout(api_keys_group)
         api_keys_layout.setSpacing(8)
-
-        api_keys_help = QLabel("Enter your OpenRouter API keys, one per line:")
-        api_keys_help.setFont(QFont("Arial", 9))
-        api_keys_layout.addWidget(api_keys_help)
 
         self.api_keys_text = QTextEdit()
         self.api_keys_text.setPlaceholderText("sk-or-v1-...\nsk-or-v1-...")
@@ -87,13 +87,9 @@ class ConfigWidget(QWidget):
         layout.addWidget(api_keys_group)
 
         # API Models section
-        api_models_group = QGroupBox("OpenRouter API Models")
+        api_models_group = QGroupBox("OpenRouter API Models (One per line)")
         api_models_layout = QVBoxLayout(api_models_group)
         api_models_layout.setSpacing(8)
-
-        api_models_help = QLabel("Enter model names to rotate through, one per line:")
-        api_models_help.setFont(QFont("Arial", 9))
-        api_models_layout.addWidget(api_models_help)
 
         self.api_models_text = QTextEdit()
         self.api_models_text.setPlaceholderText(
@@ -104,6 +100,21 @@ class ConfigWidget(QWidget):
         api_models_layout.addWidget(self.api_models_text)
 
         layout.addWidget(api_models_group)
+
+        # Port section
+        port_group = QGroupBox("Proxy Server Port")
+        port_layout = QHBoxLayout(port_group)
+        port_layout.setSpacing(8)
+
+        port_label = QLabel("Port:")
+        self.port_spin = QSpinBox()
+        self.port_spin.setRange(1, 65535)
+        self.port_spin.setValue(self.port)
+        self.port_spin.valueChanged.connect(self._on_config_changed)
+        port_layout.addWidget(port_label)
+        port_layout.addWidget(self.port_spin)
+
+        layout.addWidget(port_group)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -158,6 +169,9 @@ class ConfigWidget(QWidget):
             model.strip() for model in api_models_text.split("\n") if model.strip()
         ]
 
+        # Parse port
+        self.port = int(self.port_spin.value())
+
     def _save_config(self):
         """Save configuration to file."""
         try:
@@ -165,6 +179,7 @@ class ConfigWidget(QWidget):
                 "api_keys": self.api_keys,
                 "api_models": self.api_models,
                 "auth_tokens": list(self.auth_tokens),
+                "port": int(self.port),
             }
 
             config_file = get_config_file_path()
@@ -177,6 +192,12 @@ class ConfigWidget(QWidget):
                 f"Configuration has been saved to:\n{config_file}",
             )
             logger.info(f"Configuration saved to {config_file}")
+
+            # Emit saved signal so the app can react (e.g., restart server)
+            try:
+                self.config_saved.emit()
+            except Exception:
+                logger.exception("Failed to emit config_saved signal")
 
         except Exception as e:
             QMessageBox.critical(
@@ -204,6 +225,7 @@ class ConfigWidget(QWidget):
                 logger.debug("Using saved models from config")
                 self.api_models = saved_models
             self.auth_tokens = set(config_data.get("auth_tokens", []))
+            self.port = int(config_data.get("port", 8080))
 
             self._update_ui()
             logger.info(f"Configuration loaded from {config_file}")
@@ -246,11 +268,22 @@ class ConfigWidget(QWidget):
         # Temporarily disconnect signals to prevent _parse_config from being called
         self.api_keys_text.textChanged.disconnect()
         self.api_models_text.textChanged.disconnect()
+        try:
+            self.port_spin.blockSignals(True)
+        except Exception:
+            pass
 
         # Update the UI with current configuration - mask API keys for security
         masked_keys = [self._mask_api_key(key) for key in self.api_keys]
         self.api_keys_text.setPlainText("\n".join(masked_keys))
         self.api_models_text.setPlainText("\n".join(self.api_models))
+        try:
+            self.port_spin.setValue(int(self.port))
+        finally:
+            try:
+                self.port_spin.blockSignals(False)
+            except Exception:
+                pass
 
         # Reconnect the signals
         self.api_keys_text.textChanged.connect(self._on_config_changed)
@@ -263,6 +296,10 @@ class ConfigWidget(QWidget):
     def get_api_models(self) -> List[str]:
         """Get the configured API models."""
         return self.api_models.copy()
+
+    def get_port(self) -> int:
+        """Get the configured server port."""
+        return int(self.port)
 
     def has_valid_config(self) -> bool:
         """Check if the configuration is valid."""
