@@ -3,7 +3,6 @@ import logging
 
 import defusedxml.minidom
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QLabel,
     QSplitter,
@@ -52,7 +51,6 @@ class RequestDetailsWidget(QWidget):
 
         # Request headers
         headers_label = QLabel("Headers:")
-        headers_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         request_layout.addWidget(headers_label)
         self.request_headers = QTextEdit()
         self.request_headers.setMaximumHeight(150)
@@ -60,7 +58,6 @@ class RequestDetailsWidget(QWidget):
 
         # Request body
         body_label = QLabel("Body:")
-        body_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         request_layout.addWidget(body_label)
         self.request_body = QTextEdit()
         request_layout.addWidget(self.request_body)
@@ -81,7 +78,6 @@ class RequestDetailsWidget(QWidget):
 
         # Response headers
         resp_headers_label = QLabel("Headers:")
-        resp_headers_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         response_layout.addWidget(resp_headers_label)
         self.response_headers = QTextEdit()
         self.response_headers.setMaximumHeight(150)
@@ -89,7 +85,6 @@ class RequestDetailsWidget(QWidget):
 
         # Response body with tabs for parsed and raw
         resp_body_label = QLabel("Body:")
-        resp_body_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         response_layout.addWidget(resp_body_label)
 
         # Create tab widget for response body
@@ -105,7 +100,7 @@ class RequestDetailsWidget(QWidget):
 
         response_layout.addWidget(self.response_body_tabs)
 
-        # Keep reference to parsed body for backward compatibility
+        # Keep reference to the parsed body for backward compatibility
         self.response_body = self.response_body_parsed
 
         splitter.addWidget(response_widget)
@@ -118,7 +113,7 @@ class RequestDetailsWidget(QWidget):
         logger.debug("RequestDetailsWidget UI setup complete")
 
     def _format_body_content(self, body: str, headers: dict) -> str:
-        """Format body content based on content-type header."""
+        """Format body content based on a content-type header."""
         if not body or not body.strip():
             return body
 
@@ -214,7 +209,7 @@ class RequestDetailsWidget(QWidget):
         )
         self.response_body_parsed.setPlainText(formatted_response_body)
 
-        # Display raw response body (formatted for readability)
+        # Display a raw response body (formatted for readability)
         raw_response_body = (
             request.response.raw_body
             if hasattr(request.response, "raw_body") and request.response.raw_body

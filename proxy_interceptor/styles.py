@@ -158,7 +158,6 @@ QLabel#header {
     font-size: 16px;
     font-weight: 600;
     color: #202124;
-    margin-bottom: 10px;
 }
 
 /* Monospace proxy URL label with state colors */
