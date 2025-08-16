@@ -63,6 +63,7 @@ class StatusIndicator(QLabel):
 
 class InterceptBridge(QObject):
     request_intercepted = pyqtSignal(object)
+    streaming_update = pyqtSignal(object)  # For real-time streaming updates
 
 
 class AsyncRunner(QThread):
@@ -140,7 +141,11 @@ class AsyncRunner(QThread):
                     port=cfg_port,
                     site_url=cfg_site_url,
                 )
-                self.proxy_server = ProxyServer(config, on_intercept=self._on_intercept)
+                self.proxy_server = ProxyServer(
+                    config,
+                    on_intercept=self._on_intercept,
+                    on_streaming_update=self._on_streaming_update,
+                )
             else:
                 self.proxy_server.config.openrouter_api_keys = cfg_keys
                 self.proxy_server.config.openrouter_api_models = cfg_models
@@ -157,6 +162,10 @@ class AsyncRunner(QThread):
 
     def _on_intercept(self, intercepted):
         self.bridge.request_intercepted.emit(intercepted)
+
+    def _on_streaming_update(self, intercepted):
+        """Handle real-time streaming updates"""
+        self.bridge.streaming_update.emit(intercepted)
 
     def stop_proxy(self):
         if self._stopping:
@@ -219,6 +228,7 @@ class MainWindow(QMainWindow):
 
         self.intercept_bridge = InterceptBridge()
         self.intercept_bridge.request_intercepted.connect(self._on_request_intercepted)
+        self.intercept_bridge.streaming_update.connect(self._on_streaming_update)
 
         self.config_widget = ConfigWidget()
         self.config_widget.config_changed.connect(self._on_config_changed)
@@ -388,6 +398,7 @@ class MainWindow(QMainWindow):
             self.async_runner.bridge.request_intercepted.connect(
                 self._on_request_intercepted
             )
+            self.async_runner.bridge.streaming_update.connect(self._on_streaming_update)
             self.async_runner._start_requested = True
             # Disable button while thread boots up
             self.toggle_proxy_btn.setEnabled(False)
@@ -463,6 +474,19 @@ class MainWindow(QMainWindow):
     def _on_request_intercepted(self, intercepted):
         logger.info("New intercepted request received; updating UI list")
         self.request_list_widget.add_request(intercepted)
+
+    def _on_streaming_update(self, intercepted):
+        """Handle real-time streaming updates from the proxy server"""
+        logger.debug("Streaming update received; updating UI")
+        self.request_list_widget.update_streaming_request(intercepted)
+        # Update details view if this request is currently selected
+        if (
+            hasattr(self, "request_details_widget")
+            and self.request_details_widget.current_request
+            and self.request_details_widget.current_request.request.timestamp
+            == intercepted.request.timestamp
+        ):
+            self.request_details_widget.update_streaming_content(intercepted)
 
     def _clear_requests(self):
         logger.info("Clear button clicked")

@@ -134,6 +134,61 @@ class RequestListWidget(QWidget):
         item.setData(Qt.ItemDataRole.UserRole, request)
         return item
 
+    # ruff: noqa: C901
+    def update_streaming_request(self, updated_request: InterceptedRequest):
+        """Update an existing streaming request in the list"""
+        # Find the request in our list by timestamp (unique identifier)
+        for i, existing_request in enumerate(self.requests):
+            if existing_request.request.timestamp == updated_request.request.timestamp:
+                # Update the stored request
+                self.requests[i] = updated_request
+
+                # Update the corresponding list item
+                item = self.request_list.item(i)
+                if item:
+                    # Update the item text with new streaming content info
+                    parsed_url = urlparse(updated_request.request.url)
+                    path = parsed_url.path if parsed_url.path else "/"
+
+                    model_name = "unknown"
+                    try:
+                        if updated_request.request.body:
+                            body_data = json.loads(updated_request.request.body)
+                            model_name = body_data.get("model", "unknown")
+                    except (json.JSONDecodeError, AttributeError):
+                        pass
+
+                    # Create suffix with streaming info
+                    suffix = ""
+                    try:
+                        parts = []
+                        if (
+                            updated_request.response.is_streaming
+                            and not updated_request.response.streaming_complete
+                        ):
+                            content_len = len(
+                                updated_request.response.streaming_content
+                            )
+                            parts.append(f"streaming: {content_len} chars")
+                        elif updated_request.response.streaming_complete:
+                            lat = updated_request.response.latency_ms
+                            tok = updated_request.response.total_tokens
+                            if lat is not None:
+                                parts.append(f"{lat:.0f}ms")
+                            if tok is not None:
+                                parts.append(f"tok:{tok}")
+                        if parts:
+                            suffix = "  (" + ", ".join(parts) + ")"
+                    except Exception as e:
+                        logger.debug(f"Error creating streaming suffix: {e}")
+
+                    item.setText(
+                        f"[{updated_request.request.timestamp.strftime('%H:%M:%S')}] "
+                        f"{updated_request.request.method} {path} - {model_name}{suffix}"
+                    )
+                    item.setData(Qt.ItemDataRole.UserRole, updated_request)
+                break
+
     def _flush_pending(self):
         if not self._pending:
             return

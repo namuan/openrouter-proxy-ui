@@ -55,6 +55,7 @@ class ProxyServer:
         self,
         config: ProxyConfig,
         on_intercept: Callable[[InterceptedRequest], None] | None = None,
+        on_streaming_update: Callable[[InterceptedRequest], None] | None = None,
     ):
         self.config = config
         self.app = FastAPI(
@@ -68,6 +69,7 @@ class ProxyServer:
         self.server = None
         self.server_task = None
         self.on_intercept = on_intercept
+        self.on_streaming_update = on_streaming_update
 
         self._current_key_index = 0
         self._key_lock = asyncio.Lock()
@@ -118,6 +120,7 @@ class ProxyServer:
             async for chunk in api_response.aiter_bytes():
                 if intercepted_request:
                     captured_chunks.append(chunk)
+                    chunk_had_content = False
                     try:
                         chunk_text = chunk.decode("utf-8")
                         for line in chunk_text.split("\n"):
@@ -132,6 +135,7 @@ class ProxyServer:
                                         content = delta.get("content", "")
                                         if content:
                                             extracted_content.append(content)
+                                            chunk_had_content = True
                     except (
                         json.JSONDecodeError,
                         UnicodeDecodeError,
@@ -139,6 +143,20 @@ class ProxyServer:
                         IndexError,
                     ):
                         pass
+
+                    # Emit streaming update if we got new content
+                    if chunk_had_content and self.on_streaming_update:
+                        # Update the streaming content in the response
+                        intercepted_request.response.streaming_content = "".join(
+                            extracted_content
+                        )
+                        intercepted_request.response.is_streaming = True
+                        intercepted_request.response.streaming_complete = False
+                        try:
+                            self.on_streaming_update(intercepted_request)
+                        except Exception:
+                            logger.exception("Error in streaming update callback")
+
                 yield chunk
         except Exception:
             logger.exception("Error while streaming response")
@@ -150,14 +168,23 @@ class ProxyServer:
                     if extracted_content:
                         readable_content = "".join(extracted_content)
                         intercepted_request.response.body = readable_content
+                        intercepted_request.response.streaming_content = (
+                            readable_content
+                        )
                         logger.debug(
                             f"Captured {len(full_content)} characters of raw SSE data and extracted {len(readable_content)} characters of readable content"
                         )
                     else:
                         intercepted_request.response.body = full_content
+                        intercepted_request.response.streaming_content = full_content
                         logger.debug(
                             f"Captured {len(full_content)} characters of raw streaming response (no extracted content)"
                         )
+
+                    # Mark streaming as complete
+                    intercepted_request.response.is_streaming = False
+                    intercepted_request.response.streaming_complete = True
+
                     # Fill in latency for streaming (from request timestamp)
                     try:
                         start_ts = intercepted_request.request.timestamp
@@ -166,6 +193,14 @@ class ProxyServer:
                         ).total_seconds() * 1000.0
                     except Exception as e:
                         logger.debug(f"Error calculating latency: {e}")
+
+                    # Emit final streaming update
+                    if self.on_streaming_update:
+                        try:
+                            self.on_streaming_update(intercepted_request)
+                        except Exception:
+                            logger.exception("Error in final streaming update callback")
+
                 except Exception:
                     logger.exception("Error capturing streaming content")
             await api_response.aclose()
@@ -262,6 +297,9 @@ class ProxyServer:
                                 headers=dict(api_response.headers),
                                 body="[Streaming in progress...]",
                                 raw_body="[Streaming in progress...]",
+                                is_streaming=True,
+                                streaming_content="",
+                                streaming_complete=False,
                             )
                             # Latency will be filled in when stream completes based on request timestamp
 

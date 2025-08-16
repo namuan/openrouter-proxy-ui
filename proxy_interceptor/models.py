@@ -22,6 +22,10 @@ class HttpResponse:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    # Streaming support fields
+    is_streaming: bool = False
+    streaming_content: str = ""
+    streaming_complete: bool = False
 
 
 @dataclass

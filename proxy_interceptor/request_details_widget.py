@@ -225,5 +225,64 @@ class RequestDetailsWidget(QWidget):
 
         logger.debug("Request details updated successfully")
 
+    def update_streaming_content(self, updated_request: InterceptedRequest):
+        """Update the streaming content in real-time"""
+        if not updated_request or updated_request != self.current_request:
+            return
+
+        logger.debug("Updating streaming content in details view")
+
+        # Update the current request reference
+        self.current_request = updated_request
+
+        # Update response title with streaming status
+        meta = []
+        try:
+            if (
+                updated_request.response.is_streaming
+                and not updated_request.response.streaming_complete
+            ):
+                content_len = len(updated_request.response.streaming_content)
+                meta.append(f"streaming: {content_len} chars")
+            elif updated_request.response.streaming_complete:
+                if updated_request.response.latency_ms is not None:
+                    meta.append(f"{updated_request.response.latency_ms:.0f}ms")
+                if updated_request.response.total_tokens is not None:
+                    meta.append(f"tok:{updated_request.response.total_tokens}")
+        except Exception as e:
+            logger.debug(f"Error extracting streaming meta info: {e}")
+
+        meta_suffix = f"  ({', '.join(meta)})" if meta else ""
+        self.response_title.setText(
+            f"RESPONSE: ({updated_request.response.status_code} {updated_request.response.status_text}){meta_suffix}"
+        )
+
+        # Update the parsed body with streaming content
+        streaming_content = updated_request.response.streaming_content or ""
+        if streaming_content:
+            formatted_content = self._format_body_content(
+                streaming_content, updated_request.response.headers
+            )
+            self.response_body_parsed.setPlainText(formatted_content)
+
+            # Auto-scroll to the bottom to show latest content
+            cursor = self.response_body_parsed.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            self.response_body_parsed.setTextCursor(cursor)
+            self.response_body_parsed.ensureCursorVisible()
+
+        # Update raw body if streaming is complete
+        if updated_request.response.streaming_complete:
+            raw_content = (
+                updated_request.response.raw_body
+                if hasattr(updated_request.response, "raw_body")
+                and updated_request.response.raw_body
+                else updated_request.response.body
+            )
+            formatted_raw = self._format_body_content(
+                raw_content, updated_request.response.headers
+            )
+            self.response_body_raw.setPlainText(formatted_raw)
+
     def clear(self):
         self.set_request(None)
