@@ -50,10 +50,6 @@ class RequestDetailsWidget(QWidget):
         request_title.setObjectName("header")
         request_layout.addWidget(request_title)
 
-        # Request status placeholder (for consistent spacing with response)
-        request_status_placeholder = QLabel("")
-        request_layout.addWidget(request_status_placeholder)
-
         # Request headers
         headers_label = QLabel("Headers:")
         headers_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
@@ -79,14 +75,9 @@ class RequestDetailsWidget(QWidget):
         response_layout.setSpacing(8)
 
         # Response title
-        response_title = QLabel("RESPONSE")
-        response_title.setObjectName("header")
-        response_layout.addWidget(response_title)
-
-        # Response status
-        self.response_status = QLabel()
-        self.response_status.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-        response_layout.addWidget(self.response_status)
+        self.response_title = QLabel("RESPONSE")
+        self.response_title.setObjectName("header")
+        response_layout.addWidget(self.response_title)
 
         # Response headers
         resp_headers_label = QLabel("Headers:")
@@ -184,8 +175,8 @@ class RequestDetailsWidget(QWidget):
         if request is None:
             logger.debug("Clearing request details (None request)")
             self.request_headers.clear()
+            self.response_title.setText("RESPONSE")
             self.request_body.clear()
-            self.response_status.clear()
             self.response_headers.clear()
             self.response_body_parsed.clear()
             self.response_body_raw.clear()
@@ -208,8 +199,8 @@ class RequestDetailsWidget(QWidget):
         self.request_body.setPlainText(formatted_request_body)
 
         # Update response details
-        self.response_status.setText(
-            f"Status: {request.response.status_code} {request.response.status_text}"
+        self.response_title.setText(
+            f"RESPONSE: ({request.response.status_code} {request.response.status_text})"
         )
 
         headers_text = "\n".join(
