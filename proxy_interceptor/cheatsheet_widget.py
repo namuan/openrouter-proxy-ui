@@ -15,6 +15,11 @@ from PyQt6.QtWidgets import (
 )
 
 from proxy_interceptor.config_widget import get_config_dir, get_config_file_path
+from proxy_interceptor.layout_config import (
+    PANEL_SPACING,
+    PANEL_MARGINS,
+    BUTTON_SPACING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +59,8 @@ class CheatsheetWidget(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(15)
-        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(PANEL_SPACING)
+        layout.setContentsMargins(*PANEL_MARGINS)
 
         title_label = QLabel("Client Settings Cheatsheet")
         title_font = QFont()
@@ -74,16 +79,10 @@ class CheatsheetWidget(QWidget):
         self.text_edit = QTextEdit()
         self.text_edit.setAcceptRichText(True)
         self.text_edit.setPlainText(self.default_text)
-
-        font = QFont("Monaco", 11)
-        if not font.exactMatch():
-            font = QFont("Courier New", 11)
-        self.text_edit.setFont(font)
-
         layout.addWidget(self.text_edit)
 
         button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
+        button_layout.setSpacing(BUTTON_SPACING)
 
         self.save_btn = QPushButton("Save Cheatsheet")
         self.save_btn.clicked.connect(self._save_cheatsheet)

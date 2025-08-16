@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 
 from proxy_interceptor.models import InterceptedRequest
+from proxy_interceptor import layout_config
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +47,8 @@ class RequestDetailsWidget(QWidget):
     def _setup_ui(self):
         logger.debug("Setting up RequestDetailsWidget UI")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(10)
+        layout.setContentsMargins(*layout_config.TEXT_EDIT_MARGINS)
+        layout.setSpacing(layout_config.TEXT_EDIT_SPACING)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(1)
@@ -55,8 +56,8 @@ class RequestDetailsWidget(QWidget):
         request_widget = QWidget()
         request_widget.setObjectName("requestPanel")
         request_layout = QVBoxLayout(request_widget)
-        request_layout.setContentsMargins(15, 15, 15, 15)
-        request_layout.setSpacing(8)
+        request_layout.setContentsMargins(*layout_config.PANEL_MARGINS)
+        request_layout.setSpacing(layout_config.PANEL_SPACING)
 
         request_title = QLabel("REQUEST")
         request_title.setObjectName("header")
@@ -78,8 +79,13 @@ class RequestDetailsWidget(QWidget):
         response_widget = QWidget()
         response_widget.setObjectName("responsePanel")
         response_layout = QVBoxLayout(response_widget)
-        response_layout.setContentsMargins(15, 15, 8, 8)
-        response_layout.setSpacing(8)
+        response_layout.setContentsMargins(
+            layout_config.PANEL_MARGINS[0],
+            layout_config.PANEL_MARGINS[1],
+            layout_config.PANEL_RIGHT_MARGIN,
+            layout_config.PANEL_MARGINS[3]
+        )
+        response_layout.setSpacing(layout_config.PANEL_SPACING)
 
         self.response_title = QLabel("RESPONSE")
         self.response_title.setObjectName("header")

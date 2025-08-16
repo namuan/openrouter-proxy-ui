@@ -21,6 +21,12 @@ from PyQt6.QtWidgets import (
 )
 
 from proxy_interceptor.model_selection_widget import ModelSelectionWidget
+from proxy_interceptor.layout_config import (
+    PANEL_MARGINS,
+    PANEL_SPACING,
+    INNER_SPACING,
+    BUTTON_SPACING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +113,12 @@ class ConfigWidget(QWidget):
         logger.debug("Setting up ConfigWidget UI")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(15)
+        layout.setContentsMargins(*PANEL_MARGINS)
+        layout.setSpacing(PANEL_SPACING)
 
         api_keys_group = QGroupBox("OpenRouter API Keys (One per line)")
         api_keys_layout = QVBoxLayout(api_keys_group)
-        api_keys_layout.setSpacing(8)
+        api_keys_layout.setSpacing(INNER_SPACING)
 
         self.api_keys_text = QTextEdit()
         self.api_keys_text.setPlaceholderText("sk-or-v1-...\nsk-or-v1-...")
@@ -128,7 +134,7 @@ class ConfigWidget(QWidget):
 
         port_group = QGroupBox("Proxy Server Port")
         port_layout = QHBoxLayout(port_group)
-        port_layout.setSpacing(8)
+        port_layout.setSpacing(INNER_SPACING)
 
         port_label = QLabel("Port:")
         self.port_input = QLineEdit()
@@ -143,7 +149,7 @@ class ConfigWidget(QWidget):
         layout.addWidget(port_group)
 
         button_layout = QHBoxLayout()
-        button_layout.setSpacing(10)
+        button_layout.setSpacing(BUTTON_SPACING)
 
         self.save_btn = QPushButton("Save Configuration")
         self.save_btn.clicked.connect(self._save_config)

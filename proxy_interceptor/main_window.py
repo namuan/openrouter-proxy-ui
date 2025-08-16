@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 
 from proxy_interceptor.cheatsheet_widget import CheatsheetWidget
 from proxy_interceptor.config_widget import ConfigWidget
+from proxy_interceptor import layout_config
 from proxy_interceptor.proxy_server import ProxyConfig, ProxyServer
 from proxy_interceptor.request_details_widget import RequestDetailsWidget
 from proxy_interceptor.request_list_widget import RequestListWidget
@@ -259,11 +260,11 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(layout_config.MAIN_WINDOW_SPACING)
+        main_layout.setContentsMargins(*layout_config.MAIN_WINDOW_MARGINS)
 
         control_layout = QHBoxLayout()
-        control_layout.setSpacing(10)
+        control_layout.setSpacing(layout_config.PANEL_SPACING)
 
         self.status_indicator = StatusIndicator()
         control_layout.addWidget(self.status_indicator)
@@ -305,7 +306,7 @@ class MainWindow(QMainWindow):
 
         main_tab = QWidget()
         main_tab_layout = QVBoxLayout(main_tab)
-        main_tab_layout.setContentsMargins(5, 5, 5, 5)
+        main_tab_layout.setContentsMargins(*layout_config.TAB_WIDGET_PADDING)
 
         splitter = QSplitter()
         splitter.setHandleWidth(3)
