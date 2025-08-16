@@ -115,40 +115,38 @@ class AsyncRunner(QThread):
     async def _start_proxy(self):
         """Async implementation to start the proxy server."""
         try:
+            # Always fetch the latest configuration from the ConfigWidget
+            main_window = None
+            for widget in QApplication.allWidgets():
+                if isinstance(widget, MainWindow):
+                    main_window = widget
+                    break
+
+            if not (main_window and main_window.config_widget.has_valid_config()):
+                raise Exception(
+                    "No valid configuration found. Please configure API keys and models in the Configuration tab."
+                )
+
+            cfg_keys = main_window.config_widget.get_api_keys()
+            cfg_models = main_window.config_widget.get_api_models()
+            cfg_port = int(main_window.config_widget.get_port())
+            cfg_site_url = f"http://localhost:{cfg_port}"
+
             if self.proxy_server is None:
-                # Get configuration from the main window's config widget
-                main_window = None
-                for widget in QApplication.allWidgets():
-                    if isinstance(widget, MainWindow):
-                        main_window = widget
-                        break
-
-                if main_window and main_window.config_widget.has_valid_config():
-                    # Use configuration from config widget
-                    cfg_keys = main_window.config_widget.get_api_keys()
-                    cfg_models = main_window.config_widget.get_api_models()
-                    cfg_port = int(main_window.config_widget.get_port())
-                    cfg_site_url = f"http://localhost:{cfg_port}"
-                else:
-                    # No valid configuration available
-                    raise Exception(
-                        "No valid configuration found. Please configure API keys and models in the Configuration tab."
-                    )
-
-                if self.proxy_server is None:
-                    config = ProxyConfig(
-                        openrouter_api_keys=cfg_keys,
-                        openrouter_api_models=cfg_models,
-                        port=cfg_port,
-                        site_url=cfg_site_url,
-                    )
-                    self.proxy_server = ProxyServer(config, on_intercept=self._on_intercept)
-                else:
-                    # Update existing server config before (re)starting
-                    self.proxy_server.config.openrouter_api_keys = cfg_keys
-                    self.proxy_server.config.openrouter_api_models = cfg_models
-                    self.proxy_server.config.port = cfg_port
-                    self.proxy_server.config.site_url = cfg_site_url
+                # Create a new ProxyServer with the latest config
+                config = ProxyConfig(
+                    openrouter_api_keys=cfg_keys,
+                    openrouter_api_models=cfg_models,
+                    port=cfg_port,
+                    site_url=cfg_site_url,
+                )
+                self.proxy_server = ProxyServer(config, on_intercept=self._on_intercept)
+            else:
+                # Update existing server config before (re)starting
+                self.proxy_server.config.openrouter_api_keys = cfg_keys
+                self.proxy_server.config.openrouter_api_models = cfg_models
+                self.proxy_server.config.port = cfg_port
+                self.proxy_server.config.site_url = cfg_site_url
 
             await self.proxy_server.start()
             self.proxy_started.emit()
@@ -534,10 +532,20 @@ class MainWindow(QMainWindow):
                 except Exception:
                     logger.exception("Error while attempting to restart proxy after save")
 
-            # Update Client Settings (Cheatsheet) text to new port and save
+            # Update Client Settings (Cheatsheet) text to new port and save, preserving user content
             try:
                 if self.cheatsheet_widget:
-                    self.cheatsheet_widget.update_port_and_save(new_port)
+                    # Determine old port: if proxy is running, use current_port; otherwise assume previous config's port
+                    old_port = None
+                    try:
+                        if self.async_runner and self.async_runner.proxy_server:
+                            old_port = int(self.async_runner.proxy_server.config.port)
+                    except Exception:
+                        old_port = None
+                    if old_port is None:
+                        # Fallback: if we couldn't detect old port from running server, use new_port to no-op replacements
+                        old_port = new_port
+                    self.cheatsheet_widget.update_port_and_save(old_port, new_port)
             except Exception:
                 logger.exception("Failed to update cheatsheet after config save")
         except Exception:

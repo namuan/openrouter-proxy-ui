@@ -177,11 +177,45 @@ class CheatsheetWidget(QWidget):
         """Get the current cheatsheet content as HTML."""
         return self.text_edit.toHtml()
 
-    def update_port_and_save(self, port: int):
-        """Regenerate default text for the given port, set it, and save to disk."""
+    def update_port_and_save(self, old_port: int, new_port: int):
+        """Update cheatsheet for port change without losing custom content.
+        - If content equals the default template (for the old port), regenerate with new port.
+        - Otherwise, attempt in-place replacement of the port in common URLs (localhost/127.0.0.1), preserving user edits.
+        Always saves the cheatsheet after update.
+        """
         try:
-            self.default_text = self._generate_default_text(port)
-            self.text_edit.setPlainText(self.default_text)
+            # Current contents
+            current_plain = self.text_edit.toPlainText()
+            current_html = self.text_edit.toHtml()
+
+            # Detect if current content is still the default (for either stored default_text or default generated with old_port)
+            default_old = self._generate_default_text(old_port)
+            is_default_like = (
+                current_plain.strip() == getattr(self, "default_text", default_old).strip()
+                or current_plain.strip() == default_old.strip()
+            )
+
+            if is_default_like:
+                # Simply regenerate the default template for the new port
+                self.default_text = self._generate_default_text(new_port)
+                self.text_edit.setPlainText(self.default_text)
+            else:
+                # Preserve user content: replace occurrences of old_port with new_port in typical proxy URLs
+                # Operate on HTML to preserve formatting
+                import re
+
+                def replace_ports(s: str) -> str:
+                    patterns = [
+                        rf"(http://localhost:){old_port}(\b)",
+                        rf"(http://127\.0\.0\.1:){old_port}(\b)",
+                    ]
+                    for pat in patterns:
+                        s = re.sub(pat, rf"\g<1>{new_port}\2", s)
+                    return s
+
+                updated_html = replace_ports(current_html)
+                self.text_edit.setHtml(updated_html)
+
             # Save updated cheatsheet
             self._save_cheatsheet()
         except Exception:
