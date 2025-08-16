@@ -71,8 +71,8 @@ QPushButton:disabled {
 QTabWidget::pane {
     border: none;
     background-color: white;
-    border-radius: 8px;
-    padding: 10px;
+    border-radius: 2px;
+    padding: 1px;
 }
 
 QTabBar::tab {

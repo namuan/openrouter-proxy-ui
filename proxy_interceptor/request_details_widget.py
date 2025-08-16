@@ -78,7 +78,7 @@ class RequestDetailsWidget(QWidget):
         response_widget = QWidget()
         response_widget.setObjectName("responsePanel")
         response_layout = QVBoxLayout(response_widget)
-        response_layout.setContentsMargins(15, 15, 15, 15)
+        response_layout.setContentsMargins(15, 15, 8, 8)
         response_layout.setSpacing(8)
 
         self.response_title = QLabel("RESPONSE")

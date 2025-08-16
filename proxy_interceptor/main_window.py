@@ -260,7 +260,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setContentsMargins(10, 10, 10, 10)
 
         control_layout = QHBoxLayout()
         control_layout.setSpacing(10)
@@ -305,7 +305,7 @@ class MainWindow(QMainWindow):
 
         main_tab = QWidget()
         main_tab_layout = QVBoxLayout(main_tab)
-        main_tab_layout.setContentsMargins(10, 10, 10, 10)
+        main_tab_layout.setContentsMargins(5, 5, 5, 5)
 
         splitter = QSplitter()
         splitter.setHandleWidth(3)
@@ -564,3 +564,4 @@ class MainWindow(QMainWindow):
             self.async_runner.stop()
 
         event.accept()
+
