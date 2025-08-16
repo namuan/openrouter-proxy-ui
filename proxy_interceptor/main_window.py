@@ -21,6 +21,7 @@ from .proxy_server import ProxyServer, ProxyConfig
 from .request_list_widget import RequestListWidget
 from .request_details_widget import RequestDetailsWidget
 from .config_widget import ConfigWidget
+from .cheatsheet_widget import CheatsheetWidget
 from .styles import STYLESHEET
 
 logger = logging.getLogger(__name__)
@@ -204,6 +205,9 @@ class MainWindow(QMainWindow):
         # Create configuration widget
         self.config_widget = ConfigWidget()
         self.config_widget.config_changed.connect(self._on_config_changed)
+        
+        # Create cheatsheet widget
+        self.cheatsheet_widget = CheatsheetWidget()
 
         logger.info("Initializing MainWindow")
         self._setup_ui()
@@ -270,6 +274,7 @@ class MainWindow(QMainWindow):
         # Add tabs
         self.tab_widget.addTab(main_tab, "Requests")
         self.tab_widget.addTab(self.config_widget, "Configuration")
+        self.tab_widget.addTab(self.cheatsheet_widget, "Client Settings")
 
         main_layout.addWidget(self.tab_widget)
 
