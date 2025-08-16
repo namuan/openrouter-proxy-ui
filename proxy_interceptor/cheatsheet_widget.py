@@ -55,7 +55,7 @@ class CheatsheetWidget(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
-        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setContentsMargins(5, 5, 5, 5)
 
         title_label = QLabel("Client Settings Cheatsheet")
         title_font = QFont()

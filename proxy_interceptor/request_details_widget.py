@@ -46,7 +46,7 @@ class RequestDetailsWidget(QWidget):
     def _setup_ui(self):
         logger.debug("Setting up RequestDetailsWidget UI")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(10)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)

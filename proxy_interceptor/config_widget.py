@@ -107,6 +107,7 @@ class ConfigWidget(QWidget):
         logger.debug("Setting up ConfigWidget UI")
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(15)
 
         api_keys_group = QGroupBox("OpenRouter API Keys (One per line)")
