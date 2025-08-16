@@ -171,5 +171,10 @@ echo ""
 echo "File sizes:"
 du -sh "$OUTPUT_DIR"/*
 
+mv $OUTPUT_DIR/*.icns assets/
+mv $OUTPUT_DIR/*.ico assets/
+
+rm -rf $OUTPUT_DIR
+
 echo ""
 echo "✨ Done! Your high-resolution icons are ready to use."
