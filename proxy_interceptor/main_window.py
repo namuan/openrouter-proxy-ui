@@ -363,17 +363,14 @@ class MainWindow(QMainWindow):
                 return
             except Exception:
                 # Fallback: if queue missing, proceed to immediate show
-                pass
+                logger.debug("Status queue not available, showing status immediately")
 
         # Otherwise, show immediately
         self._display_status_now(message, level, duration)
 
     def _display_status_now(self, message: str, level: str, duration: int):
         # Choose text color based on level (no background)
-        if level == "error":
-            fg = "#EF4444"  # red
-        else:
-            fg = "#6B7280"  # gray
+        fg = "#EF4444" if level == "error" else "#6B7280"
         style = f"padding: 0px; font-size: 12px; color: {fg};"
         self.status_label.setStyleSheet(style)
         self.status_label.setText(message)

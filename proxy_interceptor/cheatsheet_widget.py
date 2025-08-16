@@ -128,7 +128,7 @@ class CheatsheetWidget(QWidget):
         except Exception as e:
             # Notify error via status signal instead of dialog
             self.status.emit(f"Failed to save cheatsheet: {e}", "error")
-            logger.exception(f"Failed to save cheatsheet: {e}")
+            logger.exception("Failed to save cheatsheet")
 
     def _load_cheatsheet(self):
         """Load cheatsheet content from file."""
@@ -151,8 +151,8 @@ class CheatsheetWidget(QWidget):
 
             logger.info(f"Cheatsheet loaded from {cheatsheet_file}")
 
-        except Exception as e:
-            logger.exception(f"Failed to load cheatsheet: {e}")
+        except Exception:
+            logger.exception("Failed to load cheatsheet")
             # On error, use default content
             self.text_edit.setPlainText(self.default_text)
 

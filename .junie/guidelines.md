@@ -1,0 +1,1 @@
+/Users/nnn/workspace/openrouter-proxy/.trae/rules/project_rules.md

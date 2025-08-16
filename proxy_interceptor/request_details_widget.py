@@ -1,10 +1,17 @@
 import json
 import logging
-import xml.dom.minidom
 
+import defusedxml.minidom
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont
-from PyQt6.QtWidgets import QLabel, QSplitter, QTextEdit, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QLabel,
+    QSplitter,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .models import InterceptedRequest
 
@@ -89,12 +96,26 @@ class RequestDetailsWidget(QWidget):
         self.response_headers.setMaximumHeight(150)
         response_layout.addWidget(self.response_headers)
 
-        # Response body
+        # Response body with tabs for parsed and raw
         resp_body_label = QLabel("Body:")
         resp_body_label.setFont(QFont("Arial", 10, QFont.Weight.Bold))
         response_layout.addWidget(resp_body_label)
-        self.response_body = QTextEdit()
-        response_layout.addWidget(self.response_body)
+
+        # Create tab widget for response body
+        self.response_body_tabs = QTabWidget()
+
+        # Parsed response tab
+        self.response_body_parsed = QTextEdit()
+        self.response_body_tabs.addTab(self.response_body_parsed, "Parsed")
+
+        # Raw response tab
+        self.response_body_raw = QTextEdit()
+        self.response_body_tabs.addTab(self.response_body_raw, "Raw")
+
+        response_layout.addWidget(self.response_body_tabs)
+
+        # Keep reference to parsed body for backward compatibility
+        self.response_body = self.response_body_parsed
 
         splitter.addWidget(response_widget)
 
@@ -125,7 +146,7 @@ class RequestDetailsWidget(QWidget):
 
             # XML formatting
             elif "application/xml" in content_type or "text/xml" in content_type:
-                dom = xml.dom.minidom.parseString(body)
+                dom = defusedxml.minidom.parseString(body)
                 return dom.toprettyxml(indent="  ")
 
             # HTML formatting (basic indentation)
@@ -166,7 +187,8 @@ class RequestDetailsWidget(QWidget):
             self.request_body.clear()
             self.response_status.clear()
             self.response_headers.clear()
-            self.response_body.clear()
+            self.response_body_parsed.clear()
+            self.response_body_raw.clear()
             return
 
         logger.info(
@@ -195,11 +217,22 @@ class RequestDetailsWidget(QWidget):
         )
         self.response_headers.setPlainText(headers_text)
 
-        # Format response body based on content type
+        # Format and display both parsed and raw response bodies
         formatted_response_body = self._format_body_content(
             request.response.body, request.response.headers
         )
-        self.response_body.setPlainText(formatted_response_body)
+        self.response_body_parsed.setPlainText(formatted_response_body)
+
+        # Display raw response body (formatted for readability)
+        raw_response_body = (
+            request.response.raw_body
+            if hasattr(request.response, "raw_body") and request.response.raw_body
+            else request.response.body
+        )
+        formatted_raw_body = self._format_body_content(
+            raw_response_body, request.response.headers
+        )
+        self.response_body_raw.setPlainText(formatted_raw_body)
 
         logger.debug("Request details updated successfully")
 

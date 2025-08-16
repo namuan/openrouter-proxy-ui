@@ -49,7 +49,7 @@ class ProxyConfig:
             ):
                 self.site_url = f"http://localhost:{self.port}"
         except Exception:
-            pass
+            logger.debug("Failed to set site_url, using default")
 
         logger.info(
             f"ProxyConfig initialized with {len(self.openrouter_api_keys)} keys, {len(self.openrouter_api_models)} models"
@@ -153,27 +153,28 @@ class ProxyServer:
                         # Skip malformed chunks
                         pass
                 yield chunk
-        except Exception as e:
-            logger.exception(f"Error while streaming response: {e}")
+        except Exception:
+            logger.exception("Error while streaming response")
         finally:
             # Update the intercepted request with both raw and extracted content
             if intercepted_request and captured_chunks:
                 try:
                     full_content = b"".join(captured_chunks).decode("utf-8")
-                    # Store extracted readable content instead of raw SSE data
+                    # Store both raw SSE data and extracted readable content
+                    intercepted_request.response.raw_body = full_content
                     if extracted_content:
                         readable_content = "".join(extracted_content)
                         intercepted_request.response.body = readable_content
                         logger.debug(
-                            f"Captured and extracted {len(readable_content)} characters of readable content"
+                            f"Captured {len(full_content)} characters of raw SSE data and extracted {len(readable_content)} characters of readable content"
                         )
                     else:
                         intercepted_request.response.body = full_content
                         logger.debug(
-                            f"Captured {len(full_content)} characters of raw streaming response"
+                            f"Captured {len(full_content)} characters of raw streaming response (no extracted content)"
                         )
-                except Exception as e:
-                    logger.exception(f"Error capturing streaming content: {e}")
+                except Exception:
+                    logger.exception("Error capturing streaming content")
             await api_response.aclose()
 
     # ruff: noqa: C901
@@ -189,8 +190,8 @@ class ProxyServer:
 
             try:
                 request_data = await request.json()
-            except json.JSONDecodeError:
-                raise HTTPException(status_code=400, detail="Invalid JSON body")
+            except json.JSONDecodeError as e:
+                raise HTTPException(status_code=400, detail="Invalid JSON body") from e
 
             is_streaming = request_data.get("stream", False)
 
@@ -255,6 +256,7 @@ class ProxyServer:
                                 status_text=api_response.reason_phrase,
                                 headers=dict(api_response.headers),
                                 body="[Streaming in progress...]",
+                                raw_body="[Streaming in progress...]",
                             )
 
                             if self.config.log_requests:
@@ -288,7 +290,7 @@ class ProxyServer:
                                 error_body = await api_response.aread()
                                 error_detail += f" Response: {error_body.decode()}"
                             except Exception:
-                                pass
+                                logger.debug("Failed to read error response body")
                             await api_response.aclose()
                             logger.warning(error_detail)
                             last_error_status = 429
@@ -316,12 +318,40 @@ class ProxyServer:
                                 f"Non-streaming success with API key index {key_index}, model '{model_name}' (index {model_index})"
                             )
 
-                            # Create response object for logging
+                            # Create response object for logging with both raw and parsed content
+                            raw_text = api_response.text
+                            try:
+                                # Try to extract content from choices for better readability
+                                parsed_json = api_response.json()
+
+                                # Extract content from choices if available (similar to streaming)
+                                extracted_content = ""
+                                if (
+                                    "choices" in parsed_json
+                                    and len(parsed_json["choices"]) > 0
+                                ):
+                                    choice = parsed_json["choices"][0]
+                                    if (
+                                        "message" in choice
+                                        and "content" in choice["message"]
+                                    ):
+                                        extracted_content = choice["message"]["content"]
+
+                                # Use extracted content if available, otherwise format full JSON
+                                if extracted_content:
+                                    formatted_body = extracted_content
+                                else:
+                                    formatted_body = json.dumps(parsed_json, indent=2)
+                            except (json.JSONDecodeError, ValueError):
+                                # If not valid JSON, use raw text for both
+                                formatted_body = raw_text
+
                             http_response = HttpResponse(
                                 status_code=api_response.status_code,
                                 status_text=api_response.reason_phrase,
                                 headers=dict(api_response.headers),
-                                body=api_response.text,
+                                body=formatted_body,
+                                raw_body=raw_text,
                             )
 
                             if self.config.log_requests:
@@ -368,7 +398,7 @@ class ProxyServer:
                     if i == num_models - 1:
                         raise HTTPException(
                             status_code=last_error_status, detail=last_error_detail
-                        )
+                        ) from None
 
                 except Exception as e:
                     error_detail = f"Unexpected error processing request with API key index {key_index}, model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
@@ -378,7 +408,7 @@ class ProxyServer:
                     if i == num_models - 1:
                         raise HTTPException(
                             status_code=last_error_status, detail=last_error_detail
-                        )
+                        ) from e
 
             # If we get here, all models failed - advance to next model for future requests
             async with self._model_lock:
@@ -386,7 +416,9 @@ class ProxyServer:
                     self.config.openrouter_api_models
                 )
             logger.error(f"All {num_models} API models failed for the request")
-            raise HTTPException(status_code=last_error_status, detail=last_error_detail)
+            raise HTTPException(
+                status_code=last_error_status, detail=last_error_detail
+            ) from None
 
         @self.app.get("/v1/models")
         async def get_models():
@@ -419,19 +451,19 @@ class ProxyServer:
                 logger.exception(error_detail)
                 raise HTTPException(
                     status_code=e.response.status_code, detail=error_detail
-                )
+                ) from e
             except httpx.RequestError as e:
                 error_detail = (
                     f"HTTPX Request Error fetching models: {e.__class__.__name__} - {e}"
                 )
                 logger.exception(error_detail)
-                raise HTTPException(status_code=503, detail=error_detail)
+                raise HTTPException(status_code=503, detail=error_detail) from e
             except Exception as e:
                 error_detail = (
                     f"Unexpected error fetching models: {e.__class__.__name__} - {e}"
                 )
                 logger.exception(error_detail)
-                raise HTTPException(status_code=500, detail=error_detail)
+                raise HTTPException(status_code=500, detail=error_detail) from e
 
         @self.app.get("/")
         async def read_root():

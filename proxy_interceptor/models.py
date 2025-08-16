@@ -20,7 +20,8 @@ class HttpResponse:
     status_code: int
     status_text: str
     headers: dict[str, str]
-    body: str
+    body: str  # Parsed/formatted response body (for display)
+    raw_body: str = ""  # Raw response body (unprocessed)
 
 
 @dataclass

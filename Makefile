@@ -14,14 +14,11 @@ clean:
 	find . -type d -name "__pycache__" -delete
 	find . -type d -name "*.egg-info" -delete
 
-# Lint code
-lint:
+# Check code (lint and format)
+check:
 	uv run ruff check .
-	uv run ruff format --check .
-
-# Format code
-format:
 	uv run ruff format .
+	@echo "Code check passed"
 
 # Run tests (placeholder for future tests)
 test:
@@ -33,7 +30,6 @@ help:
 	@echo "  install - Install dependencies"
 	@echo "  run     - Run the application"
 	@echo "  clean   - Clean build artifacts"
-	@echo "  lint    - Run linting checks"
-	@echo "  format  - Format code"
+	@echo "  check   - Run checks"
 	@echo "  test    - Run tests"
 	@echo "  help    - Show this help"

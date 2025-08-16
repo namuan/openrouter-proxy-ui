@@ -197,7 +197,7 @@ class ConfigWidget(QWidget):
         except Exception as e:
             # Emit error via status signal instead of dialog
             self.status.emit(f"Failed to save configuration: {e}", "error")
-            logger.exception(f"Failed to save configuration: {e}")
+            logger.exception("Failed to save configuration")
 
     def _load_config(self):
         """Load configuration from file."""
@@ -241,8 +241,8 @@ class ConfigWidget(QWidget):
             )
             logger.debug(f"Valid config check: {self.has_valid_config()}")
 
-        except Exception as e:
-            logger.exception(f"Failed to load configuration: {e}")
+        except Exception:
+            logger.exception("Failed to load configuration")
             # Use default configuration
             self.api_keys = []
             self.api_models = ["qwen/qwen3-coder:free", "openai/gpt-oss-20b:free"]
