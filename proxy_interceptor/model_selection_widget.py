@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class ReorderableListWidget(QListWidget):
-    """Custom QListWidget that supports drag-and-drop reordering."""
 
     def __init__(self):
         super().__init__()
@@ -34,7 +33,7 @@ class ModelSelectionWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.free_models = []
-        self.selected_models_ordered = []  # Changed to ordered list
+        self.selected_models_ordered = []
         self.checkboxes = []
         self._setup_ui()
 
@@ -44,7 +43,6 @@ class ModelSelectionWidget(QWidget):
         main_layout = QHBoxLayout(self)
         main_layout.setSpacing(15)
 
-        # Left side: Available models
         left_layout = QVBoxLayout()
 
         available_group = QGroupBox("Available Free OpenRouter Models")
@@ -70,7 +68,6 @@ class ModelSelectionWidget(QWidget):
         left_layout.addWidget(available_group)
         main_layout.addLayout(left_layout)
 
-        # Right side: Selected models (reorderable)
         right_layout = QVBoxLayout()
 
         selected_group = QGroupBox("Selected Models (Drag to Reorder)")
@@ -79,14 +76,12 @@ class ModelSelectionWidget(QWidget):
 
         self.selected_models_list = ReorderableListWidget()
         self.selected_models_list.itemChanged.connect(self._on_selected_list_changed)
-        # Connect to model reordering when items are moved
         self.selected_models_list.model().rowsMoved.connect(self._on_models_reordered)
         selected_layout.addWidget(self.selected_models_list)
 
         right_layout.addWidget(selected_group)
         main_layout.addLayout(right_layout)
 
-        # Set equal stretch for both sides
         main_layout.setStretch(0, 1)
         main_layout.setStretch(1, 1)
 
@@ -202,11 +197,9 @@ class ModelSelectionWidget(QWidget):
             self.models_layout.insertWidget(i, checkbox)
 
     def _update_selected_models_list(self):
-        """Update the selected models list widget with current selections."""
         self.selected_models_list.clear()
 
         for model_id in self.selected_models_ordered:
-            # Find the model info to display a nice name
             model_info = None
             for model in self.free_models:
                 if model["id"] == model_id:
@@ -233,12 +226,9 @@ class ModelSelectionWidget(QWidget):
             self.selected_models_list.addItem(item)
 
     def _on_selected_list_changed(self):
-        """Handle changes in the selected models list (not used for reordering)."""
         pass
 
     def _on_models_reordered(self, parent, start, end, destination, row):
-        """Handle reordering of models in the selected list."""
-        # Update the internal order based on the new list order
         new_order = []
         for i in range(self.selected_models_list.count()):
             item = self.selected_models_list.item(i)

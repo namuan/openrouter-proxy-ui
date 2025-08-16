@@ -63,7 +63,7 @@ class StatusIndicator(QLabel):
 
 class InterceptBridge(QObject):
     request_intercepted = pyqtSignal(object)
-    streaming_update = pyqtSignal(object)  # For real-time streaming updates
+    streaming_update = pyqtSignal(object)
 
 
 class AsyncRunner(QThread):
@@ -122,7 +122,6 @@ class AsyncRunner(QThread):
             cfg_keys = main_window.config_widget.get_api_keys()
             cfg_models = main_window.config_widget.get_api_models()
             cfg_port = int(main_window.config_widget.get_port())
-            # Validate port availability before starting
             try:
                 from proxy_interceptor.config_widget import is_port_available
 
@@ -164,7 +163,6 @@ class AsyncRunner(QThread):
         self.bridge.request_intercepted.emit(intercepted)
 
     def _on_streaming_update(self, intercepted):
-        """Handle real-time streaming updates"""
         self.bridge.streaming_update.emit(intercepted)
 
     def stop_proxy(self):
@@ -202,7 +200,6 @@ class AsyncRunner(QThread):
         if self.loop and self.loop.is_running():
             logger.info("Stopping AsyncRunner (ensure proxy stopped first)")
             try:
-                # Attempt to stop proxy gracefully and wait briefly
                 if self.proxy_server and self.proxy_server.is_running:
                     fut = asyncio.run_coroutine_threadsafe(
                         self._stop_proxy(), self.loop
@@ -211,7 +208,6 @@ class AsyncRunner(QThread):
                         fut.result(timeout=3.0)
             except Exception:
                 logger.exception("Error while stopping proxy before loop shutdown")
-            # Stop the loop
             self.loop.call_soon_threadsafe(self.loop.stop)
         super().quit()
         super().wait()
@@ -400,13 +396,11 @@ class MainWindow(QMainWindow):
             )
             self.async_runner.bridge.streaming_update.connect(self._on_streaming_update)
             self.async_runner._start_requested = True
-            # Disable button while thread boots up
             self.toggle_proxy_btn.setEnabled(False)
             self.toggle_proxy_btn.setText("Starting...")
             self.async_runner.start()
             return
 
-        # Disable immediately to avoid double-clicks during transitions
         self.toggle_proxy_btn.setEnabled(False)
 
         if self.toggle_proxy_btn.text() == "Start Proxy":
@@ -425,7 +419,6 @@ class MainWindow(QMainWindow):
             logger.info("Starting proxy that was queued")
             self.async_runner._start_requested = False
             self.async_runner.start_proxy()
-        # Re-enable button if not starting for any reason
         if not (self.async_runner and self.async_runner._starting):
             self.toggle_proxy_btn.setEnabled(True)
             if self.toggle_proxy_btn.text() == "Starting...":
@@ -455,9 +448,7 @@ class MainWindow(QMainWindow):
     def _on_proxy_error(self, error: str):
         logger.error(f"Proxy error: {error}")
         self.status_indicator.set_status("error")
-        # Re-enable the toggle to allow retries and show guidance
         self.toggle_proxy_btn.setEnabled(True)
-        # If we were starting/stopping, reset the label to Start Proxy for clarity
         if self.toggle_proxy_btn.text() in ("Starting...", "Stopping..."):
             self.toggle_proxy_btn.setText("Start Proxy")
         try:
@@ -476,10 +467,8 @@ class MainWindow(QMainWindow):
         self.request_list_widget.add_request(intercepted)
 
     def _on_streaming_update(self, intercepted):
-        """Handle real-time streaming updates from the proxy server"""
         logger.debug("Streaming update received; updating UI")
         self.request_list_widget.update_streaming_request(intercepted)
-        # Update details view if this request is currently selected
         if (
             hasattr(self, "request_details_widget")
             and self.request_details_widget.current_request

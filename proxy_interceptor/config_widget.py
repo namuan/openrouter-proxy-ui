@@ -197,10 +197,8 @@ class ConfigWidget(QWidget):
 
     def _save_config(self):
         try:
-            # Parse latest values from UI
             self._parse_config()
 
-            # Validate with AppConfig model
             try:
                 cfg = AppConfig(
                     api_keys=self.api_keys,
@@ -219,7 +217,6 @@ class ConfigWidget(QWidget):
                 logger.warning(f"Config validation failed: {ve}")
                 return
 
-            # Port availability check - only if port has changed
             if (
                 self._saved_port is None or cfg.port != self._saved_port
             ) and not is_port_available(cfg.port):
@@ -230,13 +227,11 @@ class ConfigWidget(QWidget):
                 return
 
             config_data = cfg.model_dump(mode="json")
-            # Pydantic serializes set to list in JSON mode
 
             config_file = get_config_file_path()
             with open(config_file, "w") as f:
                 json.dump(config_data, f, indent=2)
 
-            # Update saved port after successful save
             self._saved_port = cfg.port
 
             self.status.emit(f"Configuration saved to: {config_file}", "success")
@@ -257,14 +252,13 @@ class ConfigWidget(QWidget):
             with open(config_file) as f:
                 loaded = json.load(f)
 
-            # Validate loaded config; if invalid, fall back to defaults but keep UI usable
             try:
                 cfg = AppConfig(**loaded)
                 self.api_keys = cfg.api_keys
                 self.api_models = cfg.api_models
                 self.auth_tokens = set(cfg.auth_tokens)
                 self.port = int(cfg.port)
-                self._saved_port = self.port  # Track the saved port value
+                self._saved_port = self.port
             except Exception as ve:
                 logger.warning(f"Invalid config file, using safe defaults: {ve}")
                 self.api_keys = loaded.get("api_keys", [])
@@ -278,7 +272,7 @@ class ConfigWidget(QWidget):
                     self.api_models = saved_models
                 self.auth_tokens = set(loaded.get("auth_tokens", []))
                 self.port = int(loaded.get("port", 8080))
-                self._saved_port = self.port  # Track the saved port value
+                self._saved_port = self.port
 
             self._update_ui()
             logger.info(f"Configuration loaded from {config_file}")

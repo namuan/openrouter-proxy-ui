@@ -144,9 +144,7 @@ class ProxyServer:
                     ):
                         pass
 
-                    # Emit streaming update if we got new content
                     if chunk_had_content and self.on_streaming_update:
-                        # Update the streaming content in the response
                         intercepted_request.response.streaming_content = "".join(
                             extracted_content
                         )
@@ -181,11 +179,9 @@ class ProxyServer:
                             f"Captured {len(full_content)} characters of raw streaming response (no extracted content)"
                         )
 
-                    # Mark streaming as complete
                     intercepted_request.response.is_streaming = False
                     intercepted_request.response.streaming_complete = True
 
-                    # Fill in latency for streaming (from request timestamp)
                     try:
                         start_ts = intercepted_request.request.timestamp
                         intercepted_request.response.latency_ms = (
@@ -194,7 +190,6 @@ class ProxyServer:
                     except Exception as e:
                         logger.debug(f"Error calculating latency: {e}")
 
-                    # Emit final streaming update
                     if self.on_streaming_update:
                         try:
                             self.on_streaming_update(intercepted_request)
@@ -301,7 +296,6 @@ class ProxyServer:
                                 streaming_content="",
                                 streaming_complete=False,
                             )
-                            # Latency will be filled in when stream completes based on request timestamp
 
                             if self.config.log_requests:
                                 intercepted = InterceptedRequest(
@@ -384,7 +378,6 @@ class ProxyServer:
                             except (json.JSONDecodeError, ValueError):
                                 formatted_body = raw_text
 
-                            # Compute latency
                             try:
                                 start_ts = http_request.timestamp
                                 latency_ms = (
@@ -402,7 +395,6 @@ class ProxyServer:
                                 latency_ms=latency_ms,
                             )
 
-                            # Extract token usage if available
                             try:
                                 usage = (
                                     parsed_json.get("usage", {})
@@ -539,7 +531,6 @@ class ProxyServer:
 
         logger.info(f"Starting proxy server on {self.config.host}:{self.config.port}")
 
-        # Initialize HTTP client with reasonable timeouts; reused for upstream
         if not self._client:
             try:
                 timeout = httpx.Timeout(60.0, connect=10.0, read=60.0, write=60.0)
@@ -565,7 +556,6 @@ class ProxyServer:
                 self.server = uvicorn.Server(config)
                 self.server_task = asyncio.create_task(self.server.serve())
 
-                # Wait for readiness: poll root endpoint
                 async def _ready() -> bool:
                     try:
                         async with httpx.AsyncClient(timeout=1.0) as probe:
@@ -585,7 +575,6 @@ class ProxyServer:
                         return
                     await asyncio.sleep(0.05)
 
-                # Not ready within deadline -> attempt graceful stop and retry
                 logger.warning("Uvicorn did not become ready within deadline; retrying")
                 if self.server:
                     self.server.should_exit = True
@@ -599,11 +588,9 @@ class ProxyServer:
             except Exception:
                 logger.exception(f"Error starting uvicorn (attempt {attempt})")
 
-            # Backoff before retry if attempts left
             if attempt <= len(backoffs):
                 await asyncio.sleep(backoffs[attempt - 1])
 
-        # If we reach here, startup failed
         self.is_running = False
         raise RuntimeError(
             f"Failed to start proxy on {self.config.host}:{self.config.port}: {last_err}"

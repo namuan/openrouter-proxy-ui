@@ -18,7 +18,6 @@ class RequestListWidget(QWidget):
         self.requests: list[InterceptedRequest] = []
         logger.debug("RequestListWidget initialized")
         self._setup_ui()
-        # Batching for UI updates to avoid signal storms
         self._pending: list[InterceptedRequest] = []
         self._flush_timer = QTimer(self)
         self._flush_timer.setSingleShot(True)
@@ -46,17 +45,13 @@ class RequestListWidget(QWidget):
         self._update_list()
 
     def add_request(self, request: InterceptedRequest):
-        # Append to in-memory store
         self.requests.append(request)
-        # Stage for batched UI addition
         self._pending.append(request)
-        # Start or extend the flush timer (coalesce bursts)
         try:
             if self._flush_timer.isActive():
                 self._flush_timer.stop()
-            self._flush_timer.start(100)  # flush within 100ms window
+            self._flush_timer.start(100)
         except Exception:
-            # On failure, fall back to immediate add
             self._flush_pending()
 
     def _update_list(self):
@@ -136,17 +131,12 @@ class RequestListWidget(QWidget):
 
     # ruff: noqa: C901
     def update_streaming_request(self, updated_request: InterceptedRequest):
-        """Update an existing streaming request in the list"""
-        # Find the request in our list by timestamp (unique identifier)
         for i, existing_request in enumerate(self.requests):
             if existing_request.request.timestamp == updated_request.request.timestamp:
-                # Update the stored request
                 self.requests[i] = updated_request
 
-                # Update the corresponding list item
                 item = self.request_list.item(i)
                 if item:
-                    # Update the item text with new streaming content info
                     parsed_url = urlparse(updated_request.request.url)
                     path = parsed_url.path if parsed_url.path else "/"
 
@@ -158,7 +148,6 @@ class RequestListWidget(QWidget):
                     except (json.JSONDecodeError, AttributeError):
                         pass
 
-                    # Create suffix with streaming info
                     suffix = ""
                     try:
                         parts = []
@@ -192,7 +181,6 @@ class RequestListWidget(QWidget):
     def _flush_pending(self):
         if not self._pending:
             return
-        # Simple profiling of batch size and duration
         import time
 
         start = time.perf_counter()

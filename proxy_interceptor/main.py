@@ -30,7 +30,6 @@ class SanitizingFormatter(logging.Formatter):
         redacted = text
         for pat in self.SENSITIVE_PATTERNS:
             with contextlib.suppress(Exception):
-                # Best-effort sanitization; never fail logging
                 redacted = pat.sub(
                     lambda m: f"{m.group(1)}: ****"
                     if m.lastindex and len(m.groups()) >= 2
@@ -41,17 +40,14 @@ class SanitizingFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         original_msg = record.getMessage()
-        # Temporarily set the sanitized message into the record for formatting
         record.message = self.sanitize(original_msg)
         formatted = super().format(record)
-        # Also sanitize the final formatted string (covers extras like pathname)
         return self.sanitize(formatted)
 
 
 def setup_logging():
     root = logging.getLogger()
     if root.handlers:
-        # Already configured elsewhere (embedded), avoid duplicate handlers
         return
 
     level = logging.DEBUG
@@ -63,7 +59,6 @@ def setup_logging():
     stream_handler.setLevel(level)
     stream_handler.setFormatter(formatter)
 
-    # Use user's home directory for log files in app bundles
     log_dir = Path.home() / "Library" / "Logs" / "OpenRouterProxy"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "proxy_interceptor.log"

@@ -29,7 +29,6 @@ class RequestDetailsWidget(QWidget):
         try:
             k = key.lower()
             if k == "authorization":
-                # Mask bearer tokens
                 if isinstance(value, str) and value.lower().startswith("bearer "):
                     token = value[7:]
                     if len(token) > 8:
@@ -38,7 +37,7 @@ class RequestDetailsWidget(QWidget):
                         )
                     return "Bearer ****"
                 return "****"
-            if k in ("cookie", "set-cookie", "x-api-key"):  # common secret carriers
+            if k in ("cookie", "set-cookie", "x-api-key"):
                 return "****"
         except Exception as e:
             logger.debug(f"Error redacting header: {e}")
@@ -188,7 +187,6 @@ class RequestDetailsWidget(QWidget):
         )
         self.request_body.setPlainText(formatted_request_body)
 
-        # Build response title with latency/tokens if available
         meta = []
         try:
             if request.response.latency_ms is not None:
@@ -226,16 +224,13 @@ class RequestDetailsWidget(QWidget):
         logger.debug("Request details updated successfully")
 
     def update_streaming_content(self, updated_request: InterceptedRequest):
-        """Update the streaming content in real-time"""
         if not updated_request or updated_request != self.current_request:
             return
 
         logger.debug("Updating streaming content in details view")
 
-        # Update the current request reference
         self.current_request = updated_request
 
-        # Update response title with streaming status
         meta = []
         try:
             if (
@@ -257,7 +252,6 @@ class RequestDetailsWidget(QWidget):
             f"RESPONSE: ({updated_request.response.status_code} {updated_request.response.status_text}){meta_suffix}"
         )
 
-        # Update the parsed body with streaming content
         streaming_content = updated_request.response.streaming_content or ""
         if streaming_content:
             formatted_content = self._format_body_content(
@@ -265,13 +259,11 @@ class RequestDetailsWidget(QWidget):
             )
             self.response_body_parsed.setPlainText(formatted_content)
 
-            # Auto-scroll to the bottom to show latest content
             cursor = self.response_body_parsed.textCursor()
             cursor.movePosition(cursor.MoveOperation.End)
             self.response_body_parsed.setTextCursor(cursor)
             self.response_body_parsed.ensureCursorVisible()
 
-        # Update raw body if streaming is complete
         if updated_request.response.streaming_complete:
             raw_content = (
                 updated_request.response.raw_body
