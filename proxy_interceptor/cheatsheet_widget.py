@@ -25,6 +25,8 @@ def get_cheatsheet_file_path() -> Path:
 class CheatsheetWidget(QWidget):
     """Widget for managing client settings cheatsheet."""
 
+    status = pyqtSignal(str, str)  # message, level ('info'|'success'|'error')
+
     def __init__(self):
         super().__init__()
         # Load port from config (default to 8080)
@@ -117,17 +119,13 @@ class CheatsheetWidget(QWidget):
             with open(cheatsheet_file, "w", encoding="utf-8") as f:
                 json.dump(cheatsheet_data, f, indent=2, ensure_ascii=False)
 
-            QMessageBox.information(
-                self,
-                "Cheatsheet Saved",
-                f"Cheatsheet has been saved to:\n{cheatsheet_file}",
-            )
+            # Notify via status signal instead of dialog
+            self.status.emit(f"Cheatsheet saved to: {cheatsheet_file}", "success")
             logger.info(f"Cheatsheet saved to {cheatsheet_file}")
 
         except Exception as e:
-            QMessageBox.critical(
-                self, "Save Error", f"Failed to save cheatsheet: {e}"
-            )
+            # Notify error via status signal instead of dialog
+            self.status.emit(f"Failed to save cheatsheet: {e}", "error")
             logger.error(f"Failed to save cheatsheet: {e}")
 
     def _load_cheatsheet(self):
@@ -168,6 +166,7 @@ class CheatsheetWidget(QWidget):
         
         if reply == QMessageBox.StandardButton.Yes:
             self.text_edit.setPlainText(self.default_text)
+            self.status.emit("Cheatsheet reset to default content", "info")
             logger.info("Cheatsheet reset to default content")
 
     def get_content(self) -> str:

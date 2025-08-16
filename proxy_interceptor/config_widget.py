@@ -58,6 +58,7 @@ class ConfigWidget(QWidget):
 
     config_changed = pyqtSignal()  # Emitted when configuration changes
     config_saved = pyqtSignal()  # Emitted when configuration is saved
+    status = pyqtSignal(str, str)  # message, level ('info'|'success'|'error')
 
     def __init__(self):
         super().__init__()
@@ -186,11 +187,8 @@ class ConfigWidget(QWidget):
             with open(config_file, "w") as f:
                 json.dump(config_data, f, indent=2)
 
-            QMessageBox.information(
-                self,
-                "Configuration Saved",
-                f"Configuration has been saved to:\n{config_file}",
-            )
+            # Inform via status signal instead of dialog
+            self.status.emit(f"Configuration saved to: {config_file}", "success")
             logger.info(f"Configuration saved to {config_file}")
 
             # Emit saved signal so the app can react (e.g., restart server)
@@ -200,9 +198,8 @@ class ConfigWidget(QWidget):
                 logger.exception("Failed to emit config_saved signal")
 
         except Exception as e:
-            QMessageBox.critical(
-                self, "Save Error", f"Failed to save configuration: {e}"
-            )
+            # Emit error via status signal instead of dialog
+            self.status.emit(f"Failed to save configuration: {e}", "error")
             logger.error(f"Failed to save configuration: {e}")
 
     def _load_config(self):

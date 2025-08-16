@@ -225,6 +225,27 @@ class MainWindow(QMainWindow):
 
         logger.info("Initializing MainWindow")
         self._setup_ui()
+        
+        # Timer and queue for status label auto-hide and sequencing
+        from collections import deque
+        self._status_timer = QTimer(self)
+        self._status_timer.setSingleShot(True)
+        self._status_timer.timeout.connect(self._on_status_timeout)
+        self._status_queue = deque()
+        self._status_showing = False
+        
+        # Wire status signals from child widgets
+        try:
+            if hasattr(self.config_widget, "status"):
+                self.config_widget.status.connect(lambda msg, level: self.show_status(msg, level))
+        except Exception:
+            logger.exception("Failed to connect config_widget status signal")
+        try:
+            if hasattr(self.cheatsheet_widget, "status"):
+                self.cheatsheet_widget.status.connect(lambda msg, level: self.show_status(msg, level))
+        except Exception:
+            logger.exception("Failed to connect cheatsheet_widget status signal")
+        
         self._auto_start_proxy()
 
     def _setup_ui(self):
@@ -271,6 +292,16 @@ class MainWindow(QMainWindow):
         control_layout.addWidget(self.copy_url_btn)
 
         control_layout.addStretch()
+        
+        # Status message label (top-right)
+        self.status_label = QLabel("")
+        self.status_label.setObjectName("statusLabel")
+        self.status_label.setVisible(False)
+        self.status_label.setStyleSheet(
+            "padding: 0px; color: #6B7280; font-size: 12px;"
+        )
+        control_layout.addWidget(self.status_label)
+        
         main_layout.addLayout(control_layout)
 
         # Create tab widget
@@ -312,6 +343,59 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.tab_widget)
 
         logger.debug("UI setup complete")
+
+    def show_status(self, message: str, level: str = "info", duration: int = 4000):
+        """Queue and show a temporary status message in the top-right label.
+        - level: one of 'info', 'success', 'error'.
+        - duration: milliseconds to auto-hide.
+        Messages are queued to avoid overwriting an earlier status update.
+        """
+        # If something is currently showing, enqueue and return
+        if getattr(self, "_status_showing", False):
+            try:
+                self._status_queue.append((message, level, duration))
+                return
+            except Exception:
+                # Fallback: if queue missing, proceed to immediate show
+                pass
+
+        # Otherwise, show immediately
+        self._display_status_now(message, level, duration)
+
+    def _display_status_now(self, message: str, level: str, duration: int):
+        # Choose text color based on level (no background)
+        if level == "error":
+            fg = "#EF4444"  # red
+        else:
+            fg = "#6B7280"  # gray
+        style = (
+            "padding: 0px; font-size: 12px;"
+            f" color: {fg};"
+        )
+        self.status_label.setStyleSheet(style)
+        self.status_label.setText(message)
+        self.status_label.setVisible(True)
+        self._status_showing = True
+        try:
+            self._status_timer.stop()
+        except Exception:
+            pass
+        self._status_timer.start(max(1000, duration))
+
+    def _on_status_timeout(self):
+        """Advance the status queue or hide if empty."""
+        try:
+            if self._status_queue and len(self._status_queue) > 0:
+                next_msg, next_level, next_duration = self._status_queue.popleft()
+                self._display_status_now(next_msg, next_level, next_duration)
+            else:
+                # Nothing else to show
+                self.status_label.setVisible(False)
+                self._status_showing = False
+        except Exception:
+            # On any error, hide and reset state
+            self.status_label.setVisible(False)
+            self._status_showing = False
 
     def _auto_start_proxy(self):
         """Auto-start the proxy server when the application starts."""
@@ -378,7 +462,7 @@ class MainWindow(QMainWindow):
         """Called when a proxy error occurs."""
         logger.error(f"Proxy error: {error}")
         self.status_indicator.set_status("error")
-        QMessageBox.critical(self, "Proxy Error", f"Proxy error: {error}")
+        self.show_status(f"Proxy error: {error}", level="error")
 
     def _on_request_intercepted(self, intercepted):
         """Live-update the UI when a new request is intercepted."""
