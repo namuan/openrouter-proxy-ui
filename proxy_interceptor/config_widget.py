@@ -1,3 +1,12 @@
+import json
+import logging
+import os
+import platform
+from pathlib import Path
+from typing import List
+
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -8,14 +17,6 @@ from PyQt6.QtWidgets import (
     QGroupBox,
     QMessageBox,
 )
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QFont
-import json
-import logging
-import os
-import platform
-from pathlib import Path
-from typing import List, Set
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,8 @@ def get_config_dir() -> Path:
     if system == "Windows":
         # Windows: %APPDATA%\OpenRouterProxy
         config_dir = (
-            Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-            / "OpenRouterProxy"
+                Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+                / "OpenRouterProxy"
         )
     elif system == "Darwin":
         # macOS: ~/Library/Application Support/OpenRouterProxy
@@ -36,8 +37,8 @@ def get_config_dir() -> Path:
     else:
         # Linux/Unix: ~/.config/openrouter-proxy
         config_dir = (
-            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-            / "openrouter-proxy"
+                Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+                / "openrouter-proxy"
         )
 
     # Create directory if it doesn't exist
@@ -59,7 +60,6 @@ class ConfigWidget(QWidget):
         super().__init__()
         self.api_keys = []
         self.api_models = []
-        self.auth_tokens = set()
         self._setup_ui()
 
     def _setup_ui(self):
@@ -104,25 +104,6 @@ class ConfigWidget(QWidget):
         api_models_layout.addWidget(self.api_models_text)
 
         layout.addWidget(api_models_group)
-
-        # Auth Tokens section (optional)
-        auth_tokens_group = QGroupBox("Authentication Tokens (Optional)")
-        auth_tokens_layout = QVBoxLayout(auth_tokens_group)
-        auth_tokens_layout.setSpacing(8)
-
-        auth_tokens_help = QLabel(
-            "Enter allowed authentication tokens, one per line (leave empty to disable auth):"
-        )
-        auth_tokens_help.setFont(QFont("Arial", 9))
-        auth_tokens_layout.addWidget(auth_tokens_help)
-
-        self.auth_tokens_text = QTextEdit()
-        self.auth_tokens_text.setPlaceholderText("token1\ntoken2")
-        self.auth_tokens_text.setMaximumHeight(80)
-        self.auth_tokens_text.textChanged.connect(self._on_config_changed)
-        auth_tokens_layout.addWidget(self.auth_tokens_text)
-
-        layout.addWidget(auth_tokens_group)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -176,12 +157,6 @@ class ConfigWidget(QWidget):
         self.api_models = [
             model.strip() for model in api_models_text.split("\n") if model.strip()
         ]
-
-        # Parse auth tokens
-        auth_tokens_text = self.auth_tokens_text.toPlainText().strip()
-        self.auth_tokens = {
-            token.strip() for token in auth_tokens_text.split("\n") if token.strip()
-        }
 
     def _save_config(self):
         """Save configuration to file."""
@@ -271,18 +246,15 @@ class ConfigWidget(QWidget):
         # Temporarily disconnect signals to prevent _parse_config from being called
         self.api_keys_text.textChanged.disconnect()
         self.api_models_text.textChanged.disconnect()
-        self.auth_tokens_text.textChanged.disconnect()
 
         # Update the UI with current configuration - mask API keys for security
         masked_keys = [self._mask_api_key(key) for key in self.api_keys]
         self.api_keys_text.setPlainText("\n".join(masked_keys))
         self.api_models_text.setPlainText("\n".join(self.api_models))
-        self.auth_tokens_text.setPlainText("\n".join(self.auth_tokens))
 
         # Reconnect the signals
         self.api_keys_text.textChanged.connect(self._on_config_changed)
         self.api_models_text.textChanged.connect(self._on_config_changed)
-        self.auth_tokens_text.textChanged.connect(self._on_config_changed)
 
     def get_api_keys(self) -> List[str]:
         """Get the configured API keys."""
@@ -291,10 +263,6 @@ class ConfigWidget(QWidget):
     def get_api_models(self) -> List[str]:
         """Get the configured API models."""
         return self.api_models.copy()
-
-    def get_auth_tokens(self) -> Set[str]:
-        """Get the configured auth tokens."""
-        return self.auth_tokens.copy()
 
     def has_valid_config(self) -> bool:
         """Check if the configuration is valid."""

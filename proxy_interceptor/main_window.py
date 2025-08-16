@@ -127,8 +127,7 @@ class AsyncRunner(QThread):
                     # Use configuration from config widget
                     config = ProxyConfig(
                         openrouter_api_keys=main_window.config_widget.get_api_keys(),
-                        openrouter_api_models=main_window.config_widget.get_api_models(),
-                        allowed_auth_tokens=main_window.config_widget.get_auth_tokens(),
+                        openrouter_api_models=main_window.config_widget.get_api_models()
                     )
                 else:
                     # No valid configuration available

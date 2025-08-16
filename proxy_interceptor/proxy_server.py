@@ -29,7 +29,6 @@ class ProxyConfig:
 
     # OpenRouter-specific configuration
     openrouter_api_keys: List[str] = None
-    allowed_auth_tokens: Set[str] = None
     openrouter_api_models: List[str] = None
     site_url: str = "http://localhost:8080"
     app_name: str = "OpenRouter Proxy Interceptor"
@@ -38,8 +37,6 @@ class ProxyConfig:
         # Ensure we have lists/sets even if None provided
         if self.openrouter_api_keys is None:
             self.openrouter_api_keys = []
-        if self.allowed_auth_tokens is None:
-            self.allowed_auth_tokens = set()
         if self.openrouter_api_models is None:
             self.openrouter_api_models = []
 
@@ -108,37 +105,6 @@ class ProxyServer:
             )
             return idx
 
-    async def _verify_token(self, authorization: Optional[str] = Header(None)):
-        """Dependency to verify the provided Bearer token."""
-        if not self.config.allowed_auth_tokens:
-            return  # No auth required
-
-        if authorization is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Authorization header missing",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        try:
-            scheme, token = authorization.split()
-            if scheme.lower() != "bearer":
-                raise HTTPException(
-                    status_code=401,
-                    detail="Invalid authentication scheme",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            if token not in self.config.allowed_auth_tokens:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Invalid authentication token",
-                )
-        except ValueError:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid authorization header format",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
     async def _stream_response_generator(
         self,
         api_response: httpx.Response,
@@ -203,7 +169,7 @@ class ProxyServer:
         logger.debug("Setting up FastAPI routes")
 
         @self.app.post("/v1/chat/completions")
-        async def chat_completions(request: Request, _=Depends(self._verify_token)):
+        async def chat_completions(request: Request):
             """Handle OpenAI-compatible chat completion requests with key rotation and retry."""
             logger.info("Received chat completions request")
 
@@ -411,7 +377,7 @@ class ProxyServer:
             raise HTTPException(status_code=last_error_status, detail=last_error_detail)
 
         @self.app.get("/v1/models")
-        async def get_models(_=Depends(self._verify_token)):
+        async def get_models():
             """Fetch the list of available models from OpenRouter."""
             if not self.config.openrouter_api_keys:
                 raise HTTPException(
