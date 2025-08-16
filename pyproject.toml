@@ -2,7 +2,7 @@
 name = "proxy-interceptor"
 version = "0.1.0"
 description = "A PyQt6 application for intercepting and displaying HTTP requests"
-authors = [{ name = "Developer", email = "developer@example.com" }]
+authors = [{ name = "Namuan", email = "namuan@deskriders.dev" }]
 readme = "README.md"
 keywords = ['python', 'proxy', 'interceptor', 'http', 'pyqt6']
 requires-python = ">=3.11"
@@ -21,22 +21,22 @@ dependencies = [
     "uvicorn>=0.24.0",
     "httpx>=0.25.0",
     "pydantic>=2.0.0",
-    "ruff>=0.12.9",
     "python-dotenv>=1.1.1",
     "defusedxml>=0.7.1",
 ]
 
 [project.urls]
-Homepage = "https://github.com/example/proxy-interceptor"
-Repository = "https://github.com/example/proxy-interceptor"
-Documentation = "https://github.com/example/proxy-interceptor"
+Homepage = "https://namuan.github.io/openrouter-proxy-ui/"
+Repository = "https://github.com/namuan/openrouter-proxy-ui"
+Documentation = "https://namuan.github.io/openrouter-proxy-ui/"
 
 [project.scripts]
 proxy-interceptor = "proxy_interceptor.main:main"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.2.0",
+    "pytest-qt>=4.5.0",
     "pre-commit>=2.20.0",
     "tox-uv>=1.11.3",
     "ruff>=0.12.9",
@@ -108,8 +108,3 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 preview = true
-
-[dependency-groups]
-dev = [
-    "ruff>=0.12.9",
-]

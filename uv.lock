@@ -280,7 +280,6 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyqt6" },
     { name = "python-dotenv" },
-    { name = "ruff" },
     { name = "uvicorn" },
 ]
 
@@ -289,6 +288,7 @@ dev = [
     { name = "pre-commit" },
     { name = "pyinstaller" },
     { name = "pytest" },
+    { name = "pytest-qt" },
     { name = "ruff" },
     { name = "tox-uv" },
 ]
@@ -301,7 +301,6 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pyqt6", specifier = ">=6.5.0" },
     { name = "python-dotenv", specifier = ">=1.1.1" },
-    { name = "ruff", specifier = ">=0.12.9" },
     { name = "uvicorn", specifier = ">=0.24.0" },
 ]
 
@@ -310,6 +309,7 @@ dev = [
     { name = "pre-commit", specifier = ">=2.20.0" },
     { name = "pyinstaller", specifier = ">=6.15.0" },
     { name = "pytest", specifier = ">=7.2.0" },
+    { name = "pytest-qt", specifier = ">=4.5.0" },
     { name = "ruff", specifier = ">=0.12.9" },
     { name = "tox-uv", specifier = ">=1.11.3" },
 ]
@@ -523,6 +523,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/08/ba/45911d754e8eba3d5a841a5ce61a65a685ff1798421ac054f85aa8747dfb/pytest-8.4.1.tar.gz", hash = "sha256:7c67fd69174877359ed9371ec3af8a3d2b04741818c51e5e99cc1742251fa93c", size = 1517714, upload-time = "2025-06-18T05:48:06.109Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/29/16/c8a903f4c4dffe7a12843191437d7cd8e32751d5de349d45d3fe69544e87/pytest-8.4.1-py3-none-any.whl", hash = "sha256:539c70ba6fcead8e78eebbf1115e8b589e7565830d7d006a8723f19ac8a0afb7", size = 365474, upload-time = "2025-06-18T05:48:03.955Z" },
+]
+
+[[package]]
+name = "pytest-qt"
+version = "4.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pluggy" },
+    { name = "pytest" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d3/61/8bdec02663c18bf5016709b909411dce04a868710477dc9b9844ffcf8dd2/pytest_qt-4.5.0.tar.gz", hash = "sha256:51620e01c488f065d2036425cbc1cbcf8a6972295105fd285321eb47e66a319f", size = 128702, upload-time = "2025-07-01T17:24:39.889Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/d0/8339b888ad64a3d4e508fed8245a402b503846e1972c10ad60955883dcbb/pytest_qt-4.5.0-py3-none-any.whl", hash = "sha256:ed21ea9b861247f7d18090a26bfbda8fb51d7a8a7b6f776157426ff2ccf26eff", size = 37214, upload-time = "2025-07-01T17:24:38.226Z" },
 ]
 
 [[package]]
