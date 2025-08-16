@@ -9,13 +9,12 @@ from PyQt6.QtWidgets import (
     QWidget,
     QPushButton,
     QHBoxLayout,
-    QMessageBox,
     QSplitter,
     QLabel,
     QTabWidget,
     QApplication,
 )
-from PyQt6.QtGui import QPainter, QColor, QIcon
+from PyQt6.QtGui import QPainter, QColor
 
 from .proxy_server import ProxyServer, ProxyConfig
 from .request_list_widget import RequestListWidget

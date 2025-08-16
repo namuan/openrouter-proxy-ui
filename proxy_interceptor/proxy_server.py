@@ -2,11 +2,11 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Optional, List, Set, Callable
+from typing import Optional, List, Callable
 from dataclasses import dataclass
 
 import httpx
-from fastapi import FastAPI, Request, HTTPException, Depends, Header
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 import uvicorn
 

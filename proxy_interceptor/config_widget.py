@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import List
 
 from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -15,9 +14,7 @@ from PyQt6.QtWidgets import (
     QTextEdit,
     QPushButton,
     QGroupBox,
-    QMessageBox,
     QSpinBox,
-    QLineEdit,
 )
 
 logger = logging.getLogger(__name__)
