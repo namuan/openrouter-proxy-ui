@@ -154,7 +154,7 @@ class ModelSelectionWidget(QWidget):
             logger.exception("Error fetching models")
             # Show error in UI
             error_label = QLabel(f"Error loading models: {e!s}")
-            error_label.setStyleSheet("color: red;")
+            error_label.setObjectName("errorLabel")
             self.models_layout.addWidget(error_label)
             self.checkboxes.append(error_label)
 

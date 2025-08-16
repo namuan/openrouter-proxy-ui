@@ -282,17 +282,15 @@ class MainWindow(QMainWindow):
         self.proxy_url_label = QLabel(
             f"http://127.0.0.1:{self.config_widget.get_port()}"
         )
-        self.proxy_url_label.setStyleSheet(
-            "color: #888888; font-family: 'Monaco', 'Courier New', monospace;"
-        )
+        self.proxy_url_label.setObjectName("proxyUrlLabel")
         self.proxy_url_label.setEnabled(False)  # Start greyed out
         control_layout.addWidget(self.proxy_url_label)
 
         # Add copy button with font glyph
         self.copy_url_btn = QPushButton("⧉")
+        self.copy_url_btn.setObjectName("copyUrlBtn")
         self.copy_url_btn.setToolTip("Copy proxy URL to clipboard")
         self.copy_url_btn.setFixedSize(25, 25)
-        self.copy_url_btn.setStyleSheet("font-size: 14px; padding: 1px;")
         self.copy_url_btn.setEnabled(False)  # Start disabled
         self.copy_url_btn.clicked.connect(self._copy_proxy_url)
         control_layout.addWidget(self.copy_url_btn)
@@ -303,9 +301,6 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setVisible(False)
-        self.status_label.setStyleSheet(
-            "padding: 0px; color: #6B7280; font-size: 12px;"
-        )
         control_layout.addWidget(self.status_label)
 
         main_layout.addLayout(control_layout)
@@ -321,7 +316,6 @@ class MainWindow(QMainWindow):
         # Create splitter for request list and details
         splitter = QSplitter()
         splitter.setHandleWidth(3)  # Make handle more visible
-        splitter.setStyleSheet("QSplitter::handle { background-color: #cccccc; }")
 
         # Request list widget
         self.request_list_widget = RequestListWidget()
@@ -369,10 +363,13 @@ class MainWindow(QMainWindow):
         self._display_status_now(message, level, duration)
 
     def _display_status_now(self, message: str, level: str, duration: int):
-        # Choose text color based on level (no background)
-        fg = "#EF4444" if level == "error" else "#6B7280"
-        style = f"padding: 0px; font-size: 12px; color: {fg};"
-        self.status_label.setStyleSheet(style)
+        # Use dynamic property for level-driven styling
+        try:
+            self.status_label.setProperty("level", level)
+            self.status_label.style().unpolish(self.status_label)
+            self.status_label.style().polish(self.status_label)
+        except Exception:
+            logger.debug("Failed to repolish status_label after level change", exc_info=True)
         self.status_label.setText(message)
         self.status_label.setVisible(True)
         self._status_showing = True
@@ -442,9 +439,6 @@ class MainWindow(QMainWindow):
         self.toggle_proxy_btn.setText("Stop Proxy")
         self.status_indicator.set_status("running")
         self.proxy_url_label.setEnabled(True)
-        self.proxy_url_label.setStyleSheet(
-            "color: #333333; font-family: 'Monaco', 'Courier New', monospace;"
-        )
         # Update displayed URL to current port
         self.proxy_url_label.setText(
             f"http://127.0.0.1:{self.config_widget.get_port()}"
@@ -457,9 +451,6 @@ class MainWindow(QMainWindow):
         self.toggle_proxy_btn.setText("Start Proxy")
         self.status_indicator.set_status("stopped")
         self.proxy_url_label.setEnabled(False)
-        self.proxy_url_label.setStyleSheet(
-            "color: #888888; font-family: 'Monaco', 'Courier New', monospace;"
-        )
         self.copy_url_btn.setEnabled(False)
 
     def _on_proxy_error(self, error: str):
@@ -490,17 +481,23 @@ class MainWindow(QMainWindow):
         logger.info(f"Copied proxy URL to clipboard: {proxy_url}")
 
         # Show a brief visual feedback
-        original_text = self.copy_url_btn.text()
-        original_style = self.copy_url_btn.styleSheet()
         self.copy_url_btn.setText("✓")
-        self.copy_url_btn.setStyleSheet(
-            "font-size: 16px; font-weight: bold; padding: 2px; color: white; background-color: green; border-radius: 3px;"
-        )
+        try:
+            self.copy_url_btn.setProperty("success", True)
+            self.copy_url_btn.style().unpolish(self.copy_url_btn)
+            self.copy_url_btn.style().polish(self.copy_url_btn)
+        except Exception:
+            logger.debug("Failed to repolish copy_url_btn after success property", exc_info=True)
 
         # Reset button after 500ms using QTimer
         def reset_button():
-            self.copy_url_btn.setText(original_text)
-            self.copy_url_btn.setStyleSheet(original_style)
+            self.copy_url_btn.setText("⧉")
+            try:
+                self.copy_url_btn.setProperty("success", False)
+                self.copy_url_btn.style().unpolish(self.copy_url_btn)
+                self.copy_url_btn.style().polish(self.copy_url_btn)
+            except Exception:
+                logger.debug("Failed to repolish copy_url_btn during reset", exc_info=True)
 
         QTimer.singleShot(500, reset_button)
 

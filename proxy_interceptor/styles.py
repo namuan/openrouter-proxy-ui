@@ -22,6 +22,20 @@ QPushButton {
     font-size: 13px;
 }
 
+/* Copy button base and success feedback */
+QPushButton#copyUrlBtn {
+    font-size: 14px;
+    padding: 1px;
+}
+QPushButton#copyUrlBtn[success="true"] {
+    font-size: 16px;
+    font-weight: bold;
+    padding: 2px;
+    color: white;
+    background-color: green;
+    border-radius: 3px;
+}
+
 QPushButton:hover {
     background-color: #3367d6;
 }
@@ -98,8 +112,8 @@ QGroupBox::title {
     color: #202124;
 }
 
-/* Text edits */
-QTextEdit {
+/* Input fields: shared base + focus for QLineEdit, QTextEdit, QPlainTextEdit */
+QLineEdit, QTextEdit, QPlainTextEdit {
     border: none;
     border-radius: 4px;
     padding: 8px;
@@ -108,7 +122,7 @@ QTextEdit {
     selection-color: white;
 }
 
-QTextEdit:focus {
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus {
     background-color: white;
     border: 1px solid #4285f4;
     border-radius: 4px;
@@ -147,6 +161,25 @@ QLabel#header {
     margin-bottom: 10px;
 }
 
+/* Monospace proxy URL label with state colors */
+QLabel#proxyUrlLabel {
+    font-family: 'Monaco', 'Courier New', monospace;
+}
+QLabel#proxyUrlLabel:enabled { color: #333333; }
+QLabel#proxyUrlLabel:disabled { color: #888888; }
+
+/* Status label base and dynamic color by level property */
+QLabel#statusLabel {
+    padding: 0px;
+    font-size: 12px;
+    color: #6B7280; /* default (info) */
+}
+QLabel#statusLabel[level="error"] { color: #EF4444; }
+QLabel#statusLabel[level="success"] { color: #10B981; }
+
+/* Error label variant */
+QLabel#errorLabel { color: red; }
+
 /* Scroll bars */
 QScrollBar:vertical {
     border: none;
@@ -170,13 +203,13 @@ QScrollBar::sub-line:vertical, QScrollBar::add-line:vertical {
     height: 0px;
 }
 
-/* Splitter */
+/* Splitter handle visibility */
 QSplitter::handle {
-    background-color: transparent;
+    background-color: #cccccc; /* visible by default */
 }
 
 QSplitter::handle:hover {
-    background-color: transparent;
+    background-color: #bfbfbf;
 }
 
 /* Request/Response panels */
