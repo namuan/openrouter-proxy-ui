@@ -24,6 +24,25 @@ class RequestDetailsWidget(QWidget):
         logger.debug("RequestDetailsWidget initialized")
         self._setup_ui()
 
+    def _redact_header(self, key: str, value: str) -> str:
+        try:
+            k = key.lower()
+            if k == "authorization":
+                # Mask bearer tokens
+                if isinstance(value, str) and value.lower().startswith("bearer "):
+                    token = value[7:]
+                    if len(token) > 8:
+                        return (
+                            "Bearer " + token[:4] + "*" * (len(token) - 8) + token[-4:]
+                        )
+                    return "Bearer ****"
+                return "****"
+            if k in ("cookie", "set-cookie", "x-api-key"):  # common secret carriers
+                return "****"
+        except Exception as e:
+            logger.debug(f"Error redacting header: {e}")
+        return value
+
     def _setup_ui(self):
         logger.debug("Setting up RequestDetailsWidget UI")
         layout = QVBoxLayout(self)
@@ -153,7 +172,8 @@ class RequestDetailsWidget(QWidget):
         )
 
         headers_text = "\n".join(
-            f"{k}: {v}" for k, v in request.request.headers.items()
+            f"{k}: {self._redact_header(k, v)}"
+            for k, v in request.request.headers.items()
         )
         self.request_headers.setPlainText(headers_text)
 
@@ -162,12 +182,23 @@ class RequestDetailsWidget(QWidget):
         )
         self.request_body.setPlainText(formatted_request_body)
 
+        # Build response title with latency/tokens if available
+        meta = []
+        try:
+            if request.response.latency_ms is not None:
+                meta.append(f"{request.response.latency_ms:.0f}ms")
+            if request.response.total_tokens is not None:
+                meta.append(f"tok:{request.response.total_tokens}")
+        except Exception as e:
+            logger.debug(f"Error extracting meta info: {e}")
+        meta_suffix = f"  ({', '.join(meta)})" if meta else ""
         self.response_title.setText(
-            f"RESPONSE: ({request.response.status_code} {request.response.status_text})"
+            f"RESPONSE: ({request.response.status_code} {request.response.status_text}){meta_suffix}"
         )
 
         headers_text = "\n".join(
-            f"{k}: {v}" for k, v in request.response.headers.items()
+            f"{k}: {self._redact_header(k, v)}"
+            for k, v in request.response.headers.items()
         )
         self.response_headers.setPlainText(headers_text)
 

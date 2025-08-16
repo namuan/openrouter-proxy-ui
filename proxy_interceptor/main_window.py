@@ -75,6 +75,8 @@ class AsyncRunner(QThread):
         self.loop: asyncio.AbstractEventLoop | None = None
         self.proxy_server: ProxyServer | None = None
         self._start_requested = False
+        self._starting = False
+        self._stopping = False
         self.bridge = InterceptBridge()
 
     def run(self):
@@ -91,11 +93,15 @@ class AsyncRunner(QThread):
             self.loop.close()
 
     def start_proxy(self):
+        if self._starting:
+            logger.info("Start requested but already starting; ignoring")
+            return
         if not self.loop or not self.loop.is_running():
             logger.warning("Cannot start proxy - loop not ready, queuing start request")
             self._start_requested = True
             return
 
+        self._starting = True
         asyncio.run_coroutine_threadsafe(self._start_proxy(), self.loop)
 
     async def _start_proxy(self):
@@ -114,6 +120,16 @@ class AsyncRunner(QThread):
             cfg_keys = main_window.config_widget.get_api_keys()
             cfg_models = main_window.config_widget.get_api_models()
             cfg_port = int(main_window.config_widget.get_port())
+            # Validate port availability before starting
+            try:
+                from .config_widget import is_port_available
+
+                if not is_port_available(cfg_port):
+                    raise Exception(
+                        f"Port {cfg_port} is not available. Please choose another port in Configuration and save."
+                    )
+            except Exception as ve:
+                raise Exception(str(ve)) from ve
             cfg_site_url = f"http://localhost:{cfg_port}"
 
             if self.proxy_server is None:
@@ -135,15 +151,21 @@ class AsyncRunner(QThread):
         except Exception as e:
             logger.error(f"Failed to start proxy: {e}", exc_info=True)
             self.proxy_error.emit(str(e))
+        finally:
+            self._starting = False
 
     def _on_intercept(self, intercepted):
         self.bridge.request_intercepted.emit(intercepted)
 
     def stop_proxy(self):
+        if self._stopping:
+            logger.info("Stop requested but already stopping; ignoring")
+            return
         if not self.loop or not self.loop.is_running():
             logger.warning("Cannot stop proxy - loop not ready")
             return
 
+        self._stopping = True
         asyncio.run_coroutine_threadsafe(self._stop_proxy(), self.loop)
 
     async def _stop_proxy(self):
@@ -154,6 +176,8 @@ class AsyncRunner(QThread):
         except Exception as e:
             logger.error(f"Failed to stop proxy: {e}", exc_info=True)
             self.proxy_error.emit(str(e))
+        finally:
+            self._stopping = False
 
     def get_requests(self) -> list:
         if self.proxy_server:
@@ -166,7 +190,18 @@ class AsyncRunner(QThread):
 
     def stop(self):
         if self.loop and self.loop.is_running():
-            logger.info("Stopping AsyncRunner")
+            logger.info("Stopping AsyncRunner (ensure proxy stopped first)")
+            try:
+                # Attempt to stop proxy gracefully and wait briefly
+                if self.proxy_server and self.proxy_server.is_running:
+                    fut = asyncio.run_coroutine_threadsafe(
+                        self._stop_proxy(), self.loop
+                    )
+                    with contextlib.suppress(Exception):
+                        fut.result(timeout=3.0)
+            except Exception:
+                logger.exception("Error while stopping proxy before loop shutdown")
+            # Stop the loop
             self.loop.call_soon_threadsafe(self.loop.stop)
         super().quit()
         super().wait()
@@ -353,14 +388,23 @@ class MainWindow(QMainWindow):
                 self._on_request_intercepted
             )
             self.async_runner._start_requested = True
+            # Disable button while thread boots up
+            self.toggle_proxy_btn.setEnabled(False)
+            self.toggle_proxy_btn.setText("Starting...")
             self.async_runner.start()
             return
 
+        # Disable immediately to avoid double-clicks during transitions
+        self.toggle_proxy_btn.setEnabled(False)
+
         if self.toggle_proxy_btn.text() == "Start Proxy":
             logger.info("Starting proxy via AsyncRunner")
+            self.toggle_proxy_btn.setText("Starting...")
+            self.status_indicator.set_status("stopped")
             self.async_runner.start_proxy()
         else:
             logger.info("Stopping proxy via AsyncRunner")
+            self.toggle_proxy_btn.setText("Stopping...")
             self.async_runner.stop_proxy()
 
     def _on_loop_ready(self):
@@ -369,28 +413,51 @@ class MainWindow(QMainWindow):
             logger.info("Starting proxy that was queued")
             self.async_runner._start_requested = False
             self.async_runner.start_proxy()
+        # Re-enable button if not starting for any reason
+        if not (self.async_runner and self.async_runner._starting):
+            self.toggle_proxy_btn.setEnabled(True)
+            if self.toggle_proxy_btn.text() == "Starting...":
+                self.toggle_proxy_btn.setText("Start Proxy")
 
     def _on_proxy_started(self):
         logger.info("Proxy server started successfully")
         self.toggle_proxy_btn.setText("Stop Proxy")
+        self.toggle_proxy_btn.setEnabled(True)
         self.status_indicator.set_status("running")
         self.proxy_url_label.setEnabled(True)
         self.proxy_url_label.setText(
             f"http://127.0.0.1:{self.config_widget.get_port()}"
         )
         self.copy_url_btn.setEnabled(True)
+        self.show_status("Proxy started and ready", level="success")
 
     def _on_proxy_stopped(self):
         logger.info("Proxy server stopped")
         self.toggle_proxy_btn.setText("Start Proxy")
+        self.toggle_proxy_btn.setEnabled(True)
         self.status_indicator.set_status("stopped")
         self.proxy_url_label.setEnabled(False)
         self.copy_url_btn.setEnabled(False)
+        self.show_status("Proxy stopped", level="info")
 
     def _on_proxy_error(self, error: str):
         logger.error(f"Proxy error: {error}")
         self.status_indicator.set_status("error")
-        self.show_status(f"Proxy error: {error}", level="error")
+        # Re-enable the toggle to allow retries and show guidance
+        self.toggle_proxy_btn.setEnabled(True)
+        # If we were starting/stopping, reset the label to Start Proxy for clarity
+        if self.toggle_proxy_btn.text() in ("Starting...", "Stopping..."):
+            self.toggle_proxy_btn.setText("Start Proxy")
+        try:
+            from .error_utils import to_user_message
+
+            guidance_text = to_user_message(error)
+        except Exception:
+            guidance_text = (
+                "Proxy error. Check if the port is in use or if configuration is valid. "
+                "Try changing the port in the Configuration tab."
+            )
+        self.show_status(guidance_text, level="error")
 
     def _on_request_intercepted(self, intercepted):
         logger.info("New intercepted request received; updating UI list")
@@ -402,6 +469,7 @@ class MainWindow(QMainWindow):
             self.async_runner.clear_requests()
         self.request_list_widget.set_requests([])
         self.request_details_widget.clear()
+        self.show_status("Cleared all requests", level="success", duration=2500)
 
     def _copy_proxy_url(self):
         port = int(self.config_widget.get_port())
@@ -432,6 +500,9 @@ class MainWindow(QMainWindow):
                 )
 
         QTimer.singleShot(500, reset_button)
+        self.show_status(
+            "Proxy URL copied to clipboard", level="success", duration=2000
+        )
 
     def _on_request_selected(self, request):
         self.request_details_widget.set_request(request)

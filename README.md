@@ -18,3 +18,26 @@ It transparently rotates between multiple API keys and free models, retries on f
   – Complete request/response headers and bodies (pretty-printed JSON, XML, HTML).  
   — Streaming responses are captured and re-assembled for easy reading.
 
+## Development
+
+### Using Make Commands
+
+- **Install Dependencies**  
+  `make install`  
+  Install project requirements using `uv`
+
+- **Run Application**  
+  `make run`  
+  Start the proxy interceptor GUI
+
+- **Lint & Format**  
+  `make check`  
+  Run Ruff linter and formatter (checks only)
+
+- **Run Tests**  
+  `make test`  
+  Execute pytest test suite
+
+- **Show Help**  
+  `make help`  
+  Display all available make targets

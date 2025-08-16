@@ -1,14 +1,18 @@
 import asyncio
+import logging
 
 import httpx
 from PyQt6.QtCore import Qt
 
 from proxy_interceptor.main_window import MainWindow
 
+logger = logging.getLogger(__name__)
+
 
 class TestMainWindow:
     """Test cases for the MainWindow class."""
 
+    # ruff: noqa: C901
     def test_e2e(self, qtbot):
         # Create the main window
         window = MainWindow()
@@ -23,7 +27,9 @@ class TestMainWindow:
         # Verify the window is visible
         assert window.isVisible()
 
-        qtbot.waitUntil(lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=5000)
+        qtbot.waitUntil(
+            lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=5000
+        )
 
         # Verify the window title
         assert window.windowTitle() == "OpenRouter Proxy Interceptor"
@@ -40,13 +46,13 @@ class TestMainWindow:
                         "http://127.0.0.1:8080/v1/chat/completions",
                         headers={
                             "Content-Type": "application/json",
-                            "Authorization": "Bearer dummy-key"
+                            "Authorization": "Bearer dummy-key",
                         },
                         json={
                             "model": "it-doesnt-exist",
-                            "messages": [{"role": "user", "content": "Hello"}]
+                            "messages": [{"role": "user", "content": "Hello"}],
                         },
-                        timeout=10.0
+                        timeout=10.0,
                     )
                     print(f"Request completed with status: {response.status_code}")
                     return response
@@ -63,21 +69,39 @@ class TestMainWindow:
             loop.close()
 
         # Wait for the request to appear in the requests list
-        qtbot.waitUntil(lambda: len(window.request_list_widget.request_list.findItems("POST /v1/chat/completions", Qt.MatchFlag.MatchContains)) > 0, timeout=5000)
+        qtbot.waitUntil(
+            lambda: len(
+                window.request_list_widget.request_list.findItems(
+                    "POST /v1/chat/completions", Qt.MatchFlag.MatchContains
+                )
+            )
+            > 0,
+            timeout=5000,
+        )
 
         # Verify the request is in the list
-        items = window.request_list_widget.request_list.findItems("POST /v1/chat/completions", Qt.MatchFlag.MatchContains)
+        items = window.request_list_widget.request_list.findItems(
+            "POST /v1/chat/completions", Qt.MatchFlag.MatchContains
+        )
         assert len(items) == 1
         request_item = items[0]
         assert "POST /v1/chat/completions" in request_item.text()
 
         list_widget = window.request_list_widget.request_list
         rect = list_widget.visualItemRect(request_item)
-        qtbot.mouseClick(list_widget.viewport(), Qt.MouseButton.LeftButton, pos=rect.center())
+        qtbot.mouseClick(
+            list_widget.viewport(), Qt.MouseButton.LeftButton, pos=rect.center()
+        )
 
         # Wait until details are populated
-        qtbot.waitUntil(lambda: window.request_details_widget.request_headers.toPlainText() != "", timeout=5000)
-        qtbot.waitUntil(lambda: window.request_details_widget.request_body.toPlainText() != "", timeout=5000)
+        qtbot.waitUntil(
+            lambda: window.request_details_widget.request_headers.toPlainText() != "",
+            timeout=5000,
+        )
+        qtbot.waitUntil(
+            lambda: window.request_details_widget.request_body.toPlainText() != "",
+            timeout=5000,
+        )
 
         # Verify request details
         req_headers_text = window.request_details_widget.request_headers.toPlainText()
@@ -87,13 +111,17 @@ class TestMainWindow:
 
         # Verify response details are populated
         resp_headers_text = window.request_details_widget.response_headers.toPlainText()
-        resp_body_parsed_text = window.request_details_widget.response_body_parsed.toPlainText()
+        resp_body_parsed_text = (
+            window.request_details_widget.response_body_parsed.toPlainText()
+        )
         assert resp_headers_text != ""
         assert resp_body_parsed_text != ""
 
         # Switch to Raw tab and verify content
         window.request_details_widget.response_body_tabs.setCurrentIndex(1)
-        resp_body_raw_text = window.request_details_widget.response_body_raw.toPlainText()
+        resp_body_raw_text = (
+            window.request_details_widget.response_body_raw.toPlainText()
+        )
         assert resp_body_raw_text != ""
 
         # Switch back to Parsed tab and verify content remains
@@ -104,7 +132,9 @@ class TestMainWindow:
         # -> Check Button Text becomes "Start Proxy" and URL disabled/cleared
         if window.toggle_proxy_btn.text() == "Stop Proxy":
             qtbot.mouseClick(window.toggle_proxy_btn, Qt.MouseButton.LeftButton)
-            qtbot.waitUntil(lambda: window.toggle_proxy_btn.text() == "Start Proxy", timeout=5000)
+            qtbot.waitUntil(
+                lambda: window.toggle_proxy_btn.text() == "Start Proxy", timeout=5000
+            )
             # proxy_url_label should be disabled when stopped or at least not reporting running URL
             assert (
                 not window.proxy_url_label.isEnabled()
@@ -119,7 +149,8 @@ class TestMainWindow:
                 if "clear" in btn.text().lower():
                     clear_btn = btn
                     break
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Error finding clear button: {e}")
                 continue
 
         assert clear_btn is not None, "Clear button not found in main window"
@@ -141,14 +172,19 @@ class TestMainWindow:
                         tab_widget = tw
                         config_tab_index = i
                         break
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Error finding configuration tab: {e}")
                     continue
             if tab_widget:
                 break
 
-        assert tab_widget is not None, "Main tab widget with 'Configuration' tab not found"
+        assert tab_widget is not None, (
+            "Main tab widget with 'Configuration' tab not found"
+        )
         tab_widget.setCurrentIndex(config_tab_index)
-        qtbot.waitUntil(lambda: tab_widget.currentIndex() == config_tab_index, timeout=2000)
+        qtbot.waitUntil(
+            lambda: tab_widget.currentIndex() == config_tab_index, timeout=2000
+        )
 
         # -> Verify that there is data in OpenRouter API Keys input widget
         cfg = window.config_widget
@@ -177,23 +213,34 @@ class TestMainWindow:
 
         # Start proxy again to pick up new port
         qtbot.mouseClick(window.toggle_proxy_btn, Qt.MouseButton.LeftButton)
-        qtbot.waitUntil(lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=10000)
+        qtbot.waitUntil(
+            lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=10000
+        )
         # Wait until proxy_url_label shows new port
-        qtbot.waitUntil(lambda: f":{new_port}" in window.proxy_url_label.text(), timeout=5000)
+        qtbot.waitUntil(
+            lambda: f":{new_port}" in window.proxy_url_label.text(), timeout=5000
+        )
         assert f":{new_port}" in window.proxy_url_label.text()
 
         # -> Revert server port back to what it was
         # Stop proxy, revert port, save and restart proxy to restore original state
         qtbot.mouseClick(window.toggle_proxy_btn, Qt.MouseButton.LeftButton)
-        qtbot.waitUntil(lambda: window.toggle_proxy_btn.text() == "Start Proxy", timeout=5000)
+        qtbot.waitUntil(
+            lambda: window.toggle_proxy_btn.text() == "Start Proxy", timeout=5000
+        )
         cfg.port_input.setText(original_port_text)
         if hasattr(cfg, "save_btn"):
             qtbot.mouseClick(cfg.save_btn, Qt.MouseButton.LeftButton)
 
         # Start proxy back
         qtbot.mouseClick(window.toggle_proxy_btn, Qt.MouseButton.LeftButton)
-        qtbot.waitUntil(lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=10000)
-        qtbot.waitUntil(lambda: f":{original_port_text}" in window.proxy_url_label.text(), timeout=5000)
+        qtbot.waitUntil(
+            lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=10000
+        )
+        qtbot.waitUntil(
+            lambda: f":{original_port_text}" in window.proxy_url_label.text(),
+            timeout=5000,
+        )
         assert f":{original_port_text}" in window.proxy_url_label.text()
 
         # Wait and check

@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,6 +23,7 @@ class ProxyConfig:
     port: int = 8080
     target_base_url: str = "https://openrouter.ai/api/v1"
     log_requests: bool = True
+    max_requests: int = 1000
 
     openrouter_api_keys: list[str] = None
     openrouter_api_models: list[str] = None
@@ -59,7 +61,9 @@ class ProxyServer:
             title="OpenRouter Proxy Interceptor",
             description="A proxy that intercepts OpenRouter requests with key rotation and retry logic.",
         )
-        self.intercepted_requests: list[InterceptedRequest] = []
+        self.intercepted_requests: deque[InterceptedRequest] = deque(
+            maxlen=int(self.config.max_requests)
+        )
         self.is_running = False
         self.server = None
         self.server_task = None
@@ -74,6 +78,7 @@ class ProxyServer:
         self._client = None
 
         logger.info("Initializing ProxyServer")
+        self._setup_middleware()
         self._setup_routes()
         logger.info("ProxyServer routes configured")
 
@@ -153,9 +158,38 @@ class ProxyServer:
                         logger.debug(
                             f"Captured {len(full_content)} characters of raw streaming response (no extracted content)"
                         )
+                    # Fill in latency for streaming (from request timestamp)
+                    try:
+                        start_ts = intercepted_request.request.timestamp
+                        intercepted_request.response.latency_ms = (
+                            datetime.now() - start_ts
+                        ).total_seconds() * 1000.0
+                    except Exception as e:
+                        logger.debug(f"Error calculating latency: {e}")
                 except Exception:
                     logger.exception("Error capturing streaming content")
             await api_response.aclose()
+
+    def _setup_middleware(self):
+        logger.debug("Setting up FastAPI middleware")
+
+        @self.app.middleware("http")
+        async def timing_and_errors(request: Request, call_next):
+            start = asyncio.get_event_loop().time()
+            try:
+                response = await call_next(request)
+                duration_ms = (asyncio.get_event_loop().time() - start) * 1000.0
+                logger.info(
+                    f"Proxy ===> {request.method} {request.url.path} -> {response.status_code} in {duration_ms:.1f} ms"
+                )
+                return response
+            except Exception:
+                duration_ms = (asyncio.get_event_loop().time() - start) * 1000.0
+                logger.exception(
+                    f"Unhandled error for {request.method} {request.url.path} after {duration_ms:.1f} ms",
+                    exc_info=True,
+                )
+                raise
 
     # ruff: noqa: C901
     def _setup_routes(self):
@@ -229,6 +263,7 @@ class ProxyServer:
                                 body="[Streaming in progress...]",
                                 raw_body="[Streaming in progress...]",
                             )
+                            # Latency will be filled in when stream completes based on request timestamp
 
                             if self.config.log_requests:
                                 intercepted = InterceptedRequest(
@@ -311,13 +346,38 @@ class ProxyServer:
                             except (json.JSONDecodeError, ValueError):
                                 formatted_body = raw_text
 
+                            # Compute latency
+                            try:
+                                start_ts = http_request.timestamp
+                                latency_ms = (
+                                    datetime.now() - start_ts
+                                ).total_seconds() * 1000.0
+                            except Exception:
+                                latency_ms = None
+
                             http_response = HttpResponse(
                                 status_code=api_response.status_code,
                                 status_text=api_response.reason_phrase,
                                 headers=dict(api_response.headers),
                                 body=formatted_body,
                                 raw_body=raw_text,
+                                latency_ms=latency_ms,
                             )
+
+                            # Extract token usage if available
+                            try:
+                                usage = (
+                                    parsed_json.get("usage", {})
+                                    if isinstance(parsed_json, dict)
+                                    else {}
+                                )
+                                http_response.prompt_tokens = usage.get("prompt_tokens")
+                                http_response.completion_tokens = usage.get(
+                                    "completion_tokens"
+                                )
+                                http_response.total_tokens = usage.get("total_tokens")
+                            except Exception as e:
+                                logger.debug(f"Error extracting token usage: {e}")
 
                             if self.config.log_requests:
                                 intercepted = InterceptedRequest(
@@ -441,20 +501,75 @@ class ProxyServer:
 
         logger.info(f"Starting proxy server on {self.config.host}:{self.config.port}")
 
-        self._client = httpx.AsyncClient(timeout=600.0)
+        # Initialize HTTP client with reasonable timeouts; reused for upstream
+        if not self._client:
+            try:
+                timeout = httpx.Timeout(60.0, connect=10.0, read=60.0, write=60.0)
+            except Exception:
+                timeout = 60.0
+            self._client = httpx.AsyncClient(timeout=timeout)
+            logger.info(f"Initialized upstream HTTP client with timeout={timeout}")
 
-        config = uvicorn.Config(
-            self.app,
-            host=self.config.host,
-            port=self.config.port,
-            log_level="info",
-            access_log=False,
+        attempt = 0
+        last_err: Exception | None = None
+        backoffs = [0.2, 0.5, 1.0]
+
+        while attempt < len(backoffs) + 1:
+            attempt += 1
+            try:
+                config = uvicorn.Config(
+                    self.app,
+                    host=self.config.host,
+                    port=self.config.port,
+                    log_level="info",
+                    access_log=False,
+                )
+                self.server = uvicorn.Server(config)
+                self.server_task = asyncio.create_task(self.server.serve())
+
+                # Wait for readiness: poll root endpoint
+                async def _ready() -> bool:
+                    try:
+                        async with httpx.AsyncClient(timeout=1.0) as probe:
+                            resp = await probe.get(
+                                f"http://{self.config.host}:{self.config.port}/",
+                                headers={"Connection": "close"},
+                            )
+                            return resp.status_code in (200, 404)
+                    except Exception:
+                        return False
+
+                ready_deadline = asyncio.get_event_loop().time() + 3.0
+                while asyncio.get_event_loop().time() < ready_deadline:
+                    if await _ready():
+                        self.is_running = True
+                        logger.info("Proxy server started successfully")
+                        return
+                    await asyncio.sleep(0.05)
+
+                # Not ready within deadline -> attempt graceful stop and retry
+                logger.warning("Uvicorn did not become ready within deadline; retrying")
+                if self.server:
+                    self.server.should_exit = True
+                if self.server_task and not self.server_task.done():
+                    with contextlib.suppress(Exception):
+                        await asyncio.wait_for(self.server_task, timeout=1.0)
+                self.server = None
+                self.server_task = None
+                last_err = RuntimeError("Server readiness timed out")
+
+            except Exception:
+                logger.exception(f"Error starting uvicorn (attempt {attempt})")
+
+            # Backoff before retry if attempts left
+            if attempt <= len(backoffs):
+                await asyncio.sleep(backoffs[attempt - 1])
+
+        # If we reach here, startup failed
+        self.is_running = False
+        raise RuntimeError(
+            f"Failed to start proxy on {self.config.host}:{self.config.port}: {last_err}"
         )
-
-        self.server = uvicorn.Server(config)
-        self.server_task = asyncio.create_task(self.server.serve())
-        self.is_running = True
-        logger.info("Proxy server started successfully")
 
     async def stop(self):
         if not self.is_running or not self.server:
@@ -483,7 +598,7 @@ class ProxyServer:
 
     def get_requests(self) -> list[InterceptedRequest]:
         logger.debug(f"Retrieved {len(self.intercepted_requests)} intercepted requests")
-        return self.intercepted_requests.copy()
+        return list(self.intercepted_requests)
 
     def clear_requests(self):
         count = len(self.intercepted_requests)

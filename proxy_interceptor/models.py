@@ -18,6 +18,10 @@ class HttpResponse:
     headers: dict[str, str]
     body: str
     raw_body: str = ""
+    latency_ms: float | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 @dataclass
