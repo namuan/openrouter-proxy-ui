@@ -6,12 +6,13 @@ import platform
 from pathlib import Path
 
 from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QIntValidator
 from PyQt6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QPushButton,
-    QSpinBox,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -97,12 +98,14 @@ class ConfigWidget(QWidget):
         port_layout.setSpacing(8)
 
         port_label = QLabel("Port:")
-        self.port_spin = QSpinBox()
-        self.port_spin.setRange(1, 65535)
-        self.port_spin.setValue(self.port)
-        self.port_spin.valueChanged.connect(self._on_config_changed)
+        self.port_input = QLineEdit()
+        self.port_input.setValidator(QIntValidator(1, 65535))
+        self.port_input.setText(str(self.port))
+        self.port_input.textChanged.connect(self._on_config_changed)
+        self.port_input.setMaximumWidth(100)  # Limit the width of the input field
         port_layout.addWidget(port_label)
-        port_layout.addWidget(self.port_spin)
+        port_layout.addWidget(self.port_input)
+        port_layout.addStretch()  # Add stretch to push widgets to the left
 
         layout.addWidget(port_group)
 
@@ -159,7 +162,11 @@ class ConfigWidget(QWidget):
         self.api_keys = parsed_keys
 
         # Parse port
-        self.port = int(self.port_spin.value())
+        port_text = self.port_input.text()
+        if port_text:
+            self.port = int(port_text)
+        else:
+            self.port = 8080  # Default port if empty
 
     def _save_config(self):
         """Save configuration to file."""
@@ -253,7 +260,7 @@ class ConfigWidget(QWidget):
         # Temporarily disconnect signals to prevent _parse_config from being called
         self.api_keys_text.textChanged.disconnect()
         with contextlib.suppress(Exception):
-            self.port_spin.blockSignals(True)
+            self.port_input.textChanged.disconnect()
 
         # Update the UI with current configuration - mask API keys for security
         masked_keys = [self._mask_api_key(key) for key in self.api_keys]
@@ -263,13 +270,11 @@ class ConfigWidget(QWidget):
         self.model_selection_widget.set_selected_models(self.api_models)
 
         try:
-            self.port_spin.setValue(int(self.port))
+            self.port_input.setText(str(int(self.port)))
         finally:
-            with contextlib.suppress(Exception):
-                self.port_spin.blockSignals(False)
-
-        # Reconnect the signals
-        self.api_keys_text.textChanged.connect(self._on_config_changed)
+            # Reconnect the signals
+            self.api_keys_text.textChanged.connect(self._on_config_changed)
+            self.port_input.textChanged.connect(self._on_config_changed)
 
     def get_api_keys(self) -> list[str]:
         """Get the configured API keys."""

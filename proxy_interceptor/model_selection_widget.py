@@ -69,16 +69,16 @@ class ModelSelectionWidget(QWidget):
     def _refresh_models(self):
         """Fetch and display the list of free models from OpenRouter."""
         logger.info("Refreshing OpenRouter model list")
-        
+
         # Store currently selected models to preserve selection after refresh
         previously_selected = self.selected_models.copy()
-        
+
         # Clear existing checkboxes
         for checkbox in self.checkboxes:
             self.models_layout.removeWidget(checkbox)
             checkbox.deleteLater()
         self.checkboxes = []
-        
+
         try:
             # Fetch models from OpenRouter API
             response = httpx.get(
@@ -88,15 +88,15 @@ class ModelSelectionWidget(QWidget):
                 },
                 timeout=30,
             )
-            
+
             response.raise_for_status()
             data = response.json()
-            
+
             if "data" not in data or not isinstance(data["data"], list):
                 raise ValueError("Unexpected API response format")
-                
+
             logger.info(f"Total models found: {len(data['data'])}")
-            
+
             # Filter for free models
             # Free models typically have pricing.prompt = "0" and pricing.completion = "0"
             self.free_models = [
@@ -106,15 +106,18 @@ class ModelSelectionWidget(QWidget):
                 and float(model["pricing"].get("prompt", "0")) == 0
                 and float(model["pricing"].get("completion", "0")) == 0
             ]
-            
+
             logger.info(f"Free models found: {len(self.free_models)}")
-            
+
             # Sort models: selected models first, then alphabetically by name
-            self.free_models.sort(key=lambda m: (
-                m["id"] not in previously_selected,  # Selected models first (False < True)
-                m.get("name", m["id"]).lower()       # Then alphabetically
-            ))
-            
+            self.free_models.sort(
+                key=lambda m: (
+                    m["id"]
+                    not in previously_selected,  # Selected models first (False < True)
+                    m.get("name", m["id"]).lower(),  # Then alphabetically
+                )
+            )
+
             # Create checkboxes for each free model
             for model in self.free_models:
                 model_id = model["id"]
@@ -123,30 +126,34 @@ class ModelSelectionWidget(QWidget):
                     if "name" in model and model["name"] != model_id
                     else model_id
                 )
-                
+
                 # Format context length
-                context_length_k = f"{model['context_length']/1000:.0f}K" if "context_length" in model else "Unknown"
-                
+                context_length_k = (
+                    f"{model['context_length'] / 1000:.0f}K"
+                    if "context_length" in model
+                    else "Unknown"
+                )
+
                 # Create checkbox with model info
                 checkbox = QCheckBox(f"{name} - Context Length: {context_length_k}")
                 checkbox.model_id = model_id
                 checkbox.setChecked(model_id in previously_selected)
                 checkbox.stateChanged.connect(self._on_model_selection_changed)
-                
+
                 self.models_layout.addWidget(checkbox)
                 self.checkboxes.append(checkbox)
-                
+
                 # Add to selected models if it was previously selected
                 if model_id in previously_selected:
                     self.selected_models.add(model_id)
-                    
+
             # Emit the updated selection
             self.models_selected.emit(list(self.selected_models))
-            
+
         except Exception as e:
-            logger.error(f"Error fetching models: {e}")
+            logger.exception("Error fetching models")
             # Show error in UI
-            error_label = QLabel(f"Error loading models: {str(e)}")
+            error_label = QLabel(f"Error loading models: {e!s}")
             error_label.setStyleSheet("color: red;")
             self.models_layout.addWidget(error_label)
             self.checkboxes.append(error_label)
@@ -155,27 +162,35 @@ class ModelSelectionWidget(QWidget):
         """Handle model selection changes."""
         checkbox = self.sender()
         model_id = checkbox.model_id
-        
+
         if state == Qt.CheckState.Checked.value:
             self.selected_models.add(model_id)
         else:
             self.selected_models.discard(model_id)
-            
-        logger.debug(f"Model selection changed. Selected models: {self.selected_models}")
-        
+
+        logger.debug(
+            f"Model selection changed. Selected models: {self.selected_models}"
+        )
+
         # Re-sort the checkboxes to ensure selected models are at the top
         self._refresh_checkboxes_order()
-        
+
         self.models_selected.emit(list(self.selected_models))
-        
+
     def _refresh_checkboxes_order(self):
         """Re-sort checkboxes to ensure selected models appear at the top."""
         # Sort checkboxes: selected ones first, then alphabetically
-        self.checkboxes.sort(key=lambda cb: (
-            not cb.isChecked() if isinstance(cb, QCheckBox) else True,  # Selected first
-            cb.text().lower() if isinstance(cb, QCheckBox) else ""     # Then alphabetically
-        ))
-        
+        self.checkboxes.sort(
+            key=lambda cb: (
+                not cb.isChecked()
+                if isinstance(cb, QCheckBox)
+                else True,  # Selected first
+                cb.text().lower()
+                if isinstance(cb, QCheckBox)
+                else "",  # Then alphabetically
+            )
+        )
+
         # Re-add them to the layout in the new order
         for i, checkbox in enumerate(self.checkboxes):
             self.models_layout.removeWidget(checkbox)
