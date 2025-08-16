@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .config_widget import get_config_dir, get_config_file_path
+from proxy_interceptor.config_widget import get_config_dir, get_config_file_path
 
 logger = logging.getLogger(__name__)
 

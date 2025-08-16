@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
 
-from .models import InterceptedRequest
+from proxy_interceptor.models import InterceptedRequest
 
 logger = logging.getLogger(__name__)
 

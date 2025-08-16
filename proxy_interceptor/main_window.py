@@ -16,12 +16,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .cheatsheet_widget import CheatsheetWidget
-from .config_widget import ConfigWidget
-from .proxy_server import ProxyConfig, ProxyServer
-from .request_details_widget import RequestDetailsWidget
-from .request_list_widget import RequestListWidget
-from .styles import STYLESHEET
+from proxy_interceptor.cheatsheet_widget import CheatsheetWidget
+from proxy_interceptor.config_widget import ConfigWidget
+from proxy_interceptor.proxy_server import ProxyConfig, ProxyServer
+from proxy_interceptor.request_details_widget import RequestDetailsWidget
+from proxy_interceptor.request_list_widget import RequestListWidget
+from proxy_interceptor.styles import STYLESHEET
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,7 @@ class AsyncRunner(QThread):
             cfg_port = int(main_window.config_widget.get_port())
             # Validate port availability before starting
             try:
-                from .config_widget import is_port_available
+                from proxy_interceptor.config_widget import is_port_available
 
                 if not is_port_available(cfg_port):
                     raise Exception(
@@ -449,7 +449,7 @@ class MainWindow(QMainWindow):
         if self.toggle_proxy_btn.text() in ("Starting...", "Stopping..."):
             self.toggle_proxy_btn.setText("Start Proxy")
         try:
-            from .error_utils import to_user_message
+            from proxy_interceptor.error_utils import to_user_message
 
             guidance_text = to_user_message(error)
         except Exception:

@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .models import InterceptedRequest
+from proxy_interceptor.models import InterceptedRequest
 
 logger = logging.getLogger(__name__)
 

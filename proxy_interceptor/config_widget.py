@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .model_selection_widget import ModelSelectionWidget
+from proxy_interceptor.model_selection_widget import ModelSelectionWidget
 
 logger = logging.getLogger(__name__)
 

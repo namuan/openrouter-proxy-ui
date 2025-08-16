@@ -8,7 +8,7 @@ from typing import ClassVar
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-from .main_window import MainWindow
+from proxy_interceptor.main_window import MainWindow
 
 
 class SanitizingFormatter(logging.Formatter):

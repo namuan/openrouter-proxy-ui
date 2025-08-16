@@ -12,7 +12,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from .models import HttpRequest, HttpResponse, InterceptedRequest
+from proxy_interceptor.models import HttpRequest, HttpResponse, InterceptedRequest
 
 logger = logging.getLogger(__name__)
 
