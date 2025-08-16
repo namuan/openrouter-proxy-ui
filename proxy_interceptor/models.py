@@ -6,6 +6,7 @@ from typing import Dict
 @dataclass
 class HttpRequest:
     """Represents an HTTP request."""
+
     timestamp: datetime
     method: str
     url: str
@@ -16,6 +17,7 @@ class HttpRequest:
 @dataclass
 class HttpResponse:
     """Represents an HTTP response."""
+
     status_code: int
     status_text: str
     headers: Dict[str, str]
@@ -25,5 +27,6 @@ class HttpResponse:
 @dataclass
 class InterceptedRequest:
     """Represents a complete request/response pair."""
+
     request: HttpRequest
     response: HttpResponse

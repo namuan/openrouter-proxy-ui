@@ -3,32 +3,43 @@ import logging
 from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt
-from PyQt6.QtWidgets import (QMainWindow, QVBoxLayout, QWidget,
-                             QPushButton, QHBoxLayout, QMessageBox, QSplitter, QLabel, QTabWidget, QApplication)
+from PyQt6.QtWidgets import (
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+    QPushButton,
+    QHBoxLayout,
+    QMessageBox,
+    QSplitter,
+    QLabel,
+    QTabWidget,
+    QApplication,
+)
 from PyQt6.QtGui import QPainter, QColor
 
 from .proxy_server import ProxyServer, ProxyConfig
 from .request_list_widget import RequestListWidget
 from .request_details_widget import RequestDetailsWidget
 from .config_widget import ConfigWidget
+from .styles import STYLESHEET
 
 logger = logging.getLogger(__name__)
 
 
 class StatusIndicator(QLabel):
     """A colored dot widget to show proxy server status."""
-    
+
     def __init__(self):
         super().__init__()
         self.status = "stopped"  # stopped, running, error
         self.setFixedSize(16, 16)
         self.setToolTip("Proxy Server Status")
-        
+
     def set_status(self, status: str):
         """Set the status and update the display."""
         self.status = status
         self.update()
-        
+
         # Update tooltip
         if status == "running":
             self.setToolTip("Proxy Server: Running")
@@ -36,12 +47,12 @@ class StatusIndicator(QLabel):
             self.setToolTip("Proxy Server: Error")
         else:
             self.setToolTip("Proxy Server: Stopped")
-    
+
     def paintEvent(self, event):
         """Paint the status indicator dot."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
+
         # Choose color based on status
         if self.status == "running":
             color = QColor(34, 197, 94)  # Green
@@ -49,7 +60,7 @@ class StatusIndicator(QLabel):
             color = QColor(239, 68, 68)  # Red
         else:
             color = QColor(156, 163, 175)  # Gray
-        
+
         painter.setBrush(color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(2, 2, 12, 12)
@@ -57,48 +68,49 @@ class StatusIndicator(QLabel):
 
 class InterceptBridge(QObject):
     """Signal bridge to safely emit intercepted requests to the UI thread."""
+
     request_intercepted = pyqtSignal(object)  # emits InterceptedRequest
 
 
 class AsyncRunner(QThread):
     """Thread for running async operations."""
-    
+
     loop_ready = pyqtSignal(object)  # Emits the event loop when ready
     proxy_started = pyqtSignal()
     proxy_stopped = pyqtSignal()
     proxy_error = pyqtSignal(str)
-    
+
     def __init__(self):
         super().__init__()
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self.proxy_server: Optional[ProxyServer] = None
         self._start_requested = False
         self.bridge = InterceptBridge()
-        
+
     def run(self):
         """Run the async event loop in this thread."""
         logger.info("Starting async event loop thread")
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
-        
+
         # Schedule a call to emit the loop reference
         self.loop.call_soon_threadsafe(lambda: self.loop_ready.emit(self.loop))
-        
+
         try:
             self.loop.run_forever()
         finally:
             logger.info("Async event loop thread finished")
             self.loop.close()
-    
+
     def start_proxy(self):
         """Start the proxy server."""
         if not self.loop or not self.loop.is_running():
             logger.warning("Cannot start proxy - loop not ready, queuing start request")
             self._start_requested = True
             return
-            
+
         asyncio.run_coroutine_threadsafe(self._start_proxy(), self.loop)
-    
+
     async def _start_proxy(self):
         """Async implementation to start the proxy server."""
         try:
@@ -109,39 +121,41 @@ class AsyncRunner(QThread):
                     if isinstance(widget, MainWindow):
                         main_window = widget
                         break
-                        
+
                 if main_window and main_window.config_widget.has_valid_config():
                     # Use configuration from config widget
                     config = ProxyConfig(
                         openrouter_api_keys=main_window.config_widget.get_api_keys(),
                         openrouter_api_models=main_window.config_widget.get_api_models(),
-                        allowed_auth_tokens=main_window.config_widget.get_auth_tokens()
+                        allowed_auth_tokens=main_window.config_widget.get_auth_tokens(),
                     )
                 else:
                     # No valid configuration available
-                    raise Exception("No valid configuration found. Please configure API keys and models in the Configuration tab.")
-                    
+                    raise Exception(
+                        "No valid configuration found. Please configure API keys and models in the Configuration tab."
+                    )
+
                 self.proxy_server = ProxyServer(config, on_intercept=self._on_intercept)
-            
+
             await self.proxy_server.start()
             self.proxy_started.emit()
         except Exception as e:
             logger.error(f"Failed to start proxy: {e}", exc_info=True)
             self.proxy_error.emit(str(e))
-    
+
     def _on_intercept(self, intercepted):
         """Called by ProxyServer thread when a request is intercepted."""
         # This callback runs in the proxy thread context; emit via signal to UI thread
         self.bridge.request_intercepted.emit(intercepted)
-    
+
     def stop_proxy(self):
         """Stop the proxy server."""
         if not self.loop or not self.loop.is_running():
             logger.warning("Cannot stop proxy - loop not ready")
             return
-            
+
         asyncio.run_coroutine_threadsafe(self._stop_proxy(), self.loop)
-    
+
     async def _stop_proxy(self):
         """Async implementation to stop the proxy server."""
         try:
@@ -151,18 +165,18 @@ class AsyncRunner(QThread):
         except Exception as e:
             logger.error(f"Failed to stop proxy: {e}", exc_info=True)
             self.proxy_error.emit(str(e))
-    
+
     def get_requests(self) -> list:
         """Get intercepted requests from the proxy server."""
         if self.proxy_server:
             return self.proxy_server.get_requests()
         return []
-    
+
     def clear_requests(self):
         """Clear intercepted requests."""
         if self.proxy_server:
             self.proxy_server.clear_requests()
-    
+
     def stop(self):
         """Stop the thread by stopping its event loop."""
         if self.loop and self.loop.is_running():
@@ -174,93 +188,102 @@ class AsyncRunner(QThread):
 
 class MainWindow(QMainWindow):
     """Main application window."""
-    
+
     def __init__(self):
         super().__init__()
         self.async_runner: Optional[AsyncRunner] = None
         self.setWindowTitle("OpenRouter Proxy Interceptor")
         self.setGeometry(100, 100, 1200, 800)
-        
+
+        # Apply modern stylesheet
+        self.setStyleSheet(STYLESHEET)
+
         self.intercept_bridge = InterceptBridge()
         self.intercept_bridge.request_intercepted.connect(self._on_request_intercepted)
-        
+
         # Create configuration widget
         self.config_widget = ConfigWidget()
         self.config_widget.config_changed.connect(self._on_config_changed)
-        
+
         logger.info("Initializing MainWindow")
         self._setup_ui()
         self._auto_start_proxy()
-        
+
     def _setup_ui(self):
         """Set up the user interface."""
         logger.debug("Setting up UI")
-        
+
         # Create central widget and main layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
-        
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+
         # Create control buttons
         control_layout = QHBoxLayout()
-        
+        control_layout.setSpacing(10)
+
         # Add status indicator
         self.status_indicator = StatusIndicator()
         control_layout.addWidget(self.status_indicator)
-        
+
         self.toggle_proxy_btn = QPushButton("Start Proxy")
+        self.toggle_proxy_btn.setObjectName("toggleProxyBtn")
         self.toggle_proxy_btn.clicked.connect(self._toggle_proxy)
         control_layout.addWidget(self.toggle_proxy_btn)
-        
-        self.clear_btn = QPushButton("Clear")
+
+        self.clear_btn = QPushButton("Clear All Requests")
         self.clear_btn.clicked.connect(self._clear_requests)
         control_layout.addWidget(self.clear_btn)
-        
+
         control_layout.addStretch()
         main_layout.addLayout(control_layout)
-        
+
         # Create tab widget
         self.tab_widget = QTabWidget()
-        
+
         # Main tab with request list and details
         main_tab = QWidget()
         main_tab_layout = QVBoxLayout(main_tab)
-        
+        main_tab_layout.setContentsMargins(10, 10, 10, 10)
+
         # Create splitter for request list and details
         splitter = QSplitter()
-        
+        splitter.setHandleWidth(1)
+
         # Request list widget
         self.request_list_widget = RequestListWidget()
         self.request_list_widget.request_selected.connect(self._on_request_selected)
         splitter.addWidget(self.request_list_widget)
-        
+
         # Request details widget
         self.request_details_widget = RequestDetailsWidget()
         splitter.addWidget(self.request_details_widget)
-        
+
         # Set splitter proportions
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)
-        
+
         main_tab_layout.addWidget(splitter)
-        
+
         # Add tabs
         self.tab_widget.addTab(main_tab, "Requests")
         self.tab_widget.addTab(self.config_widget, "Configuration")
-        
+
         main_layout.addWidget(self.tab_widget)
-        
+
         logger.debug("UI setup complete")
-    
+
     def _auto_start_proxy(self):
         """Auto-start the proxy server when the application starts."""
         logger.info("Auto-starting proxy server")
         self._toggle_proxy()
-    
+
     def _toggle_proxy(self):
         """Toggle the proxy server on/off."""
         logger.info("Toggle proxy button clicked")
-        
+
         if self.async_runner is None:
             logger.info("Creating new AsyncRunner")
             self.async_runner = AsyncRunner()
@@ -269,19 +292,21 @@ class MainWindow(QMainWindow):
             self.async_runner.proxy_stopped.connect(self._on_proxy_stopped)
             self.async_runner.proxy_error.connect(self._on_proxy_error)
             # Connect live update signal
-            self.async_runner.bridge.request_intercepted.connect(self._on_request_intercepted)
+            self.async_runner.bridge.request_intercepted.connect(
+                self._on_request_intercepted
+            )
             # Queue the start request before starting the thread
             self.async_runner._start_requested = True
             self.async_runner.start()
             return
-            
+
         if self.toggle_proxy_btn.text() == "Start Proxy":
             logger.info("Starting proxy via AsyncRunner")
             self.async_runner.start_proxy()
         else:
             logger.info("Stopping proxy via AsyncRunner")
             self.async_runner.stop_proxy()
-    
+
     def _on_loop_ready(self):
         """Called when the async event loop is ready."""
         logger.info("Async event loop is ready")
@@ -290,25 +315,25 @@ class MainWindow(QMainWindow):
             logger.info("Starting proxy that was queued")
             self.async_runner._start_requested = False
             self.async_runner.start_proxy()
-    
+
     def _on_proxy_started(self):
         """Called when the proxy server has started."""
         logger.info("Proxy server started successfully")
         self.toggle_proxy_btn.setText("Stop Proxy")
         self.status_indicator.set_status("running")
-    
+
     def _on_proxy_stopped(self):
         """Called when the proxy server has stopped."""
         logger.info("Proxy server stopped")
         self.toggle_proxy_btn.setText("Start Proxy")
         self.status_indicator.set_status("stopped")
-    
+
     def _on_proxy_error(self, error: str):
         """Called when a proxy error occurs."""
         logger.error(f"Proxy error: {error}")
         self.status_indicator.set_status("error")
         QMessageBox.critical(self, "Proxy Error", f"Proxy error: {error}")
-    
+
     def _on_request_intercepted(self, intercepted):
         """Live-update the UI when a new request is intercepted."""
         logger.info("New intercepted request received; updating UI list")
@@ -321,27 +346,29 @@ class MainWindow(QMainWindow):
             self.async_runner.clear_requests()
         self.request_list_widget.set_requests([])
         self.request_details_widget.clear()
-    
+
     def _on_request_selected(self, request):
         """Handle request selection."""
         self.request_details_widget.set_request(request)
-    
+
     def _on_config_changed(self):
         """Handle configuration changes."""
         logger.debug("Configuration changed")
         # If proxy is running, we might want to restart it with new config
         # For now, just log the change
         if self.config_widget.has_valid_config():
-            logger.info(f"Configuration updated: {len(self.config_widget.get_api_keys())} keys, {len(self.config_widget.get_api_models())} models")
+            logger.info(
+                f"Configuration updated: {len(self.config_widget.get_api_keys())} keys, {len(self.config_widget.get_api_models())} models"
+            )
         else:
             logger.warning("Configuration is incomplete - missing API keys or models")
-    
+
     def closeEvent(self, event):
         """Handle window close event."""
         logger.info("Application closing")
-        
+
         if self.async_runner and self.async_runner.isRunning():
             logger.info("Stopping AsyncRunner")
             self.async_runner.stop()
-        
+
         event.accept()
