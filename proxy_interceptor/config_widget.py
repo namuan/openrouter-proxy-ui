@@ -20,13 +20,13 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from proxy_interceptor.model_selection_widget import ModelSelectionWidget
 from proxy_interceptor.layout_config import (
+    BUTTON_SPACING,
+    INNER_SPACING,
     PANEL_MARGINS,
     PANEL_SPACING,
-    INNER_SPACING,
-    BUTTON_SPACING,
 )
+from proxy_interceptor.model_selection_widget import ModelSelectionWidget
 
 logger = logging.getLogger(__name__)
 

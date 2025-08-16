@@ -16,9 +16,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from proxy_interceptor import layout_config
 from proxy_interceptor.cheatsheet_widget import CheatsheetWidget
 from proxy_interceptor.config_widget import ConfigWidget
-from proxy_interceptor import layout_config
 from proxy_interceptor.proxy_server import ProxyConfig, ProxyServer
 from proxy_interceptor.request_details_widget import RequestDetailsWidget
 from proxy_interceptor.request_list_widget import RequestListWidget
@@ -565,4 +565,3 @@ class MainWindow(QMainWindow):
             self.async_runner.stop()
 
         event.accept()
-

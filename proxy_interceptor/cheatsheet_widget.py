@@ -16,9 +16,9 @@ from PyQt6.QtWidgets import (
 
 from proxy_interceptor.config_widget import get_config_dir, get_config_file_path
 from proxy_interceptor.layout_config import (
-    PANEL_SPACING,
-    PANEL_MARGINS,
     BUTTON_SPACING,
+    PANEL_MARGINS,
+    PANEL_SPACING,
 )
 
 logger = logging.getLogger(__name__)

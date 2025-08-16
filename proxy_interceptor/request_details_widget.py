@@ -12,8 +12,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from proxy_interceptor.models import InterceptedRequest
 from proxy_interceptor import layout_config
+from proxy_interceptor.models import InterceptedRequest
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class RequestDetailsWidget(QWidget):
             layout_config.PANEL_MARGINS[0],
             layout_config.PANEL_MARGINS[1],
             layout_config.PANEL_RIGHT_MARGIN,
-            layout_config.PANEL_MARGINS[3]
+            layout_config.PANEL_MARGINS[3],
         )
         response_layout.setSpacing(layout_config.PANEL_SPACING)
 
