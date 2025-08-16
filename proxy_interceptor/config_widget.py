@@ -258,10 +258,10 @@ class ConfigWidget(QWidget):
         # Update the UI with current configuration - mask API keys for security
         masked_keys = [self._mask_api_key(key) for key in self.api_keys]
         self.api_keys_text.setPlainText("\n".join(masked_keys))
-        
+
         # Update model selection widget
         self.model_selection_widget.set_selected_models(self.api_models)
-        
+
         try:
             self.port_spin.setValue(int(self.port))
         finally:
