@@ -1,6 +1,7 @@
-from datetime import datetime
 import logging
-from .models import InterceptedRequest, HttpRequest, HttpResponse
+from datetime import datetime
+
+from .models import HttpRequest, HttpResponse, InterceptedRequest
 
 logger = logging.getLogger(__name__)
 

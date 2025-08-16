@@ -1,17 +1,19 @@
-from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QTextEdit,
-    QPushButton,
-    QMessageBox,
-)
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QFont
 import json
 import logging
 from pathlib import Path
+
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
 from .config_widget import get_config_dir, get_config_file_path
 
 logger = logging.getLogger(__name__)
@@ -34,14 +36,14 @@ class CheatsheetWidget(QWidget):
         try:
             cfg_file = get_config_file_path()
             if cfg_file.exists():
-                with open(cfg_file, "r") as f:
+                with open(cfg_file) as f:
                     cfg = json.load(f)
                     port = int(cfg.get("port", 8080))
         except Exception:
             logger.exception("Failed to read port from config; using default 8080")
 
         self.default_text = self._generate_default_text(port)
-        
+
         self._setup_ui()
         self._load_cheatsheet()
         logger.debug("CheatsheetWidget initialized")
@@ -80,13 +82,13 @@ class CheatsheetWidget(QWidget):
         self.text_edit = QTextEdit()
         self.text_edit.setAcceptRichText(True)
         self.text_edit.setPlainText(self.default_text)
-        
+
         # Set a monospace font for better code display
         font = QFont("Monaco", 11)  # Monaco is available on macOS
         if not font.exactMatch():
             font = QFont("Courier New", 11)  # Fallback
         self.text_edit.setFont(font)
-        
+
         layout.addWidget(self.text_edit)
 
         # Buttons
@@ -112,7 +114,7 @@ class CheatsheetWidget(QWidget):
             content = self.text_edit.toPlainText()
             cheatsheet_data = {
                 "content": content,
-                "html_content": self.text_edit.toHtml()  # Save rich text formatting
+                "html_content": self.text_edit.toHtml(),  # Save rich text formatting
             }
 
             cheatsheet_file = get_cheatsheet_file_path()
@@ -126,7 +128,7 @@ class CheatsheetWidget(QWidget):
         except Exception as e:
             # Notify error via status signal instead of dialog
             self.status.emit(f"Failed to save cheatsheet: {e}", "error")
-            logger.error(f"Failed to save cheatsheet: {e}")
+            logger.exception(f"Failed to save cheatsheet: {e}")
 
     def _load_cheatsheet(self):
         """Load cheatsheet content from file."""
@@ -136,7 +138,7 @@ class CheatsheetWidget(QWidget):
                 logger.debug("No cheatsheet file found, using default content")
                 return
 
-            with open(cheatsheet_file, "r", encoding="utf-8") as f:
+            with open(cheatsheet_file, encoding="utf-8") as f:
                 cheatsheet_data = json.load(f)
 
             # Try to load HTML content first (rich text), fallback to plain text
@@ -150,7 +152,7 @@ class CheatsheetWidget(QWidget):
             logger.info(f"Cheatsheet loaded from {cheatsheet_file}")
 
         except Exception as e:
-            logger.error(f"Failed to load cheatsheet: {e}")
+            logger.exception(f"Failed to load cheatsheet: {e}")
             # On error, use default content
             self.text_edit.setPlainText(self.default_text)
 
@@ -161,9 +163,9 @@ class CheatsheetWidget(QWidget):
             "Reset Cheatsheet",
             "Are you sure you want to reset the cheatsheet to default content? This will lose any custom changes.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.No,
         )
-        
+
         if reply == QMessageBox.StandardButton.Yes:
             self.text_edit.setPlainText(self.default_text)
             self.status.emit("Cheatsheet reset to default content", "info")
@@ -191,7 +193,8 @@ class CheatsheetWidget(QWidget):
             # Detect if current content is still the default (for either stored default_text or default generated with old_port)
             default_old = self._generate_default_text(old_port)
             is_default_like = (
-                current_plain.strip() == getattr(self, "default_text", default_old).strip()
+                current_plain.strip()
+                == getattr(self, "default_text", default_old).strip()
                 or current_plain.strip() == default_old.strip()
             )
 

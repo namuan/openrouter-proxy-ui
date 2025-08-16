@@ -1,9 +1,10 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QListWidget, QListWidgetItem
-from PyQt6.QtCore import Qt, pyqtSignal
 import json
 import logging
-from typing import List
 from urllib.parse import urlparse
+
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QLabel, QListWidget, QListWidgetItem, QVBoxLayout, QWidget
+
 from .models import InterceptedRequest
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,7 @@ class RequestListWidget(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.requests: List[InterceptedRequest] = []
+        self.requests: list[InterceptedRequest] = []
         logger.debug("RequestListWidget initialized")
         self._setup_ui()
 
@@ -39,7 +40,7 @@ class RequestListWidget(QWidget):
         layout.addWidget(self.request_list)
         logger.debug("RequestListWidget UI setup complete")
 
-    def set_requests(self, requests: List[InterceptedRequest]):
+    def set_requests(self, requests: list[InterceptedRequest]):
         """Update the list of requests."""
         logger.info(f"Setting {len(requests)} requests in list widget")
         self.requests = requests

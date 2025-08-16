@@ -8,10 +8,6 @@ install:
 run:
 	uv run python -m proxy_interceptor.main
 
-# Development mode with hot reload (if supported)
-dev:
-	uv run python -m proxy_interceptor.main
-
 # Clean build artifacts
 clean:
 	find . -type f -name "*.pyc" -delete
@@ -36,7 +32,6 @@ help:
 	@echo "Available targets:"
 	@echo "  install - Install dependencies"
 	@echo "  run     - Run the application"
-	@echo "  dev     - Run in development mode"
 	@echo "  clean   - Clean build artifacts"
 	@echo "  lint    - Run linting checks"
 	@echo "  format  - Format code"

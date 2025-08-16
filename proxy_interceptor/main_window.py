@@ -1,26 +1,26 @@
 import asyncio
+import contextlib
 import logging
-from typing import Optional
 
-from PyQt6.QtCore import QThread, pyqtSignal, QObject, Qt, QTimer
+from PyQt6.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
     QMainWindow,
+    QPushButton,
+    QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
-    QPushButton,
-    QHBoxLayout,
-    QSplitter,
-    QLabel,
-    QTabWidget,
-    QApplication,
 )
-from PyQt6.QtGui import QPainter, QColor
 
-from .proxy_server import ProxyServer, ProxyConfig
-from .request_list_widget import RequestListWidget
-from .request_details_widget import RequestDetailsWidget
-from .config_widget import ConfigWidget
 from .cheatsheet_widget import CheatsheetWidget
+from .config_widget import ConfigWidget
+from .proxy_server import ProxyConfig, ProxyServer
+from .request_details_widget import RequestDetailsWidget
+from .request_list_widget import RequestListWidget
 from .styles import STYLESHEET
 
 logger = logging.getLogger(__name__)
@@ -82,8 +82,8 @@ class AsyncRunner(QThread):
 
     def __init__(self):
         super().__init__()
-        self.loop: Optional[asyncio.AbstractEventLoop] = None
-        self.proxy_server: Optional[ProxyServer] = None
+        self.loop: asyncio.AbstractEventLoop | None = None
+        self.proxy_server: ProxyServer | None = None
         self._start_requested = False
         self.bridge = InterceptBridge()
 
@@ -201,7 +201,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.async_runner: Optional[AsyncRunner] = None
+        self.async_runner: AsyncRunner | None = None
         self.setWindowTitle("OpenRouter Proxy Interceptor")
         self.setGeometry(100, 100, 1200, 800)
 
@@ -216,33 +216,38 @@ class MainWindow(QMainWindow):
         self.config_widget.config_changed.connect(self._on_config_changed)
         # React only on explicit save for server restarts
         self.config_widget.config_saved.connect(self._on_config_saved)
-        
+
         # Create cheatsheet widget
         self.cheatsheet_widget = CheatsheetWidget()
 
         logger.info("Initializing MainWindow")
         self._setup_ui()
-        
+
         # Timer and queue for status label auto-hide and sequencing
         from collections import deque
+
         self._status_timer = QTimer(self)
         self._status_timer.setSingleShot(True)
         self._status_timer.timeout.connect(self._on_status_timeout)
         self._status_queue = deque()
         self._status_showing = False
-        
+
         # Wire status signals from child widgets
         try:
             if hasattr(self.config_widget, "status"):
-                self.config_widget.status.connect(lambda msg, level: self.show_status(msg, level))
+                self.config_widget.status.connect(
+                    lambda msg, level: self.show_status(msg, level)
+                )
         except Exception:
             logger.exception("Failed to connect config_widget status signal")
         try:
             if hasattr(self.cheatsheet_widget, "status"):
-                self.cheatsheet_widget.status.connect(lambda msg, level: self.show_status(msg, level))
+                self.cheatsheet_widget.status.connect(
+                    lambda msg, level: self.show_status(msg, level)
+                )
         except Exception:
             logger.exception("Failed to connect cheatsheet_widget status signal")
-        
+
         self._auto_start_proxy()
 
     def _setup_ui(self):
@@ -274,11 +279,15 @@ class MainWindow(QMainWindow):
         control_layout.addWidget(self.clear_btn)
 
         # Add proxy URL label and copy button
-        self.proxy_url_label = QLabel(f"http://127.0.0.1:{self.config_widget.get_port()}")
-        self.proxy_url_label.setStyleSheet("color: #888888; font-family: 'Monaco', 'Courier New', monospace;")
+        self.proxy_url_label = QLabel(
+            f"http://127.0.0.1:{self.config_widget.get_port()}"
+        )
+        self.proxy_url_label.setStyleSheet(
+            "color: #888888; font-family: 'Monaco', 'Courier New', monospace;"
+        )
         self.proxy_url_label.setEnabled(False)  # Start greyed out
         control_layout.addWidget(self.proxy_url_label)
-        
+
         # Add copy button with font glyph
         self.copy_url_btn = QPushButton("⧉")
         self.copy_url_btn.setToolTip("Copy proxy URL to clipboard")
@@ -289,7 +298,7 @@ class MainWindow(QMainWindow):
         control_layout.addWidget(self.copy_url_btn)
 
         control_layout.addStretch()
-        
+
         # Status message label (top-right)
         self.status_label = QLabel("")
         self.status_label.setObjectName("statusLabel")
@@ -298,7 +307,7 @@ class MainWindow(QMainWindow):
             "padding: 0px; color: #6B7280; font-size: 12px;"
         )
         control_layout.addWidget(self.status_label)
-        
+
         main_layout.addLayout(control_layout)
 
         # Create tab widget
@@ -326,7 +335,7 @@ class MainWindow(QMainWindow):
         # Set splitter proportions - expand request list more by default
         splitter.setStretchFactor(0, 1)  # Request list gets more space
         splitter.setStretchFactor(1, 2)  # Details gets less space
-        
+
         # Set initial sizes to give more space to request list
         splitter.setSizes([150, 500])  # Request list: 400px, Details: 200px
 
@@ -365,18 +374,13 @@ class MainWindow(QMainWindow):
             fg = "#EF4444"  # red
         else:
             fg = "#6B7280"  # gray
-        style = (
-            "padding: 0px; font-size: 12px;"
-            f" color: {fg};"
-        )
+        style = f"padding: 0px; font-size: 12px; color: {fg};"
         self.status_label.setStyleSheet(style)
         self.status_label.setText(message)
         self.status_label.setVisible(True)
         self._status_showing = True
-        try:
+        with contextlib.suppress(Exception):
             self._status_timer.stop()
-        except Exception:
-            pass
         self._status_timer.start(max(1000, duration))
 
     def _on_status_timeout(self):
@@ -441,9 +445,13 @@ class MainWindow(QMainWindow):
         self.toggle_proxy_btn.setText("Stop Proxy")
         self.status_indicator.set_status("running")
         self.proxy_url_label.setEnabled(True)
-        self.proxy_url_label.setStyleSheet("color: #333333; font-family: 'Monaco', 'Courier New', monospace;")
+        self.proxy_url_label.setStyleSheet(
+            "color: #333333; font-family: 'Monaco', 'Courier New', monospace;"
+        )
         # Update displayed URL to current port
-        self.proxy_url_label.setText(f"http://127.0.0.1:{self.config_widget.get_port()}")
+        self.proxy_url_label.setText(
+            f"http://127.0.0.1:{self.config_widget.get_port()}"
+        )
         self.copy_url_btn.setEnabled(True)
 
     def _on_proxy_stopped(self):
@@ -452,7 +460,9 @@ class MainWindow(QMainWindow):
         self.toggle_proxy_btn.setText("Start Proxy")
         self.status_indicator.set_status("stopped")
         self.proxy_url_label.setEnabled(False)
-        self.proxy_url_label.setStyleSheet("color: #888888; font-family: 'Monaco', 'Courier New', monospace;")
+        self.proxy_url_label.setStyleSheet(
+            "color: #888888; font-family: 'Monaco', 'Courier New', monospace;"
+        )
         self.copy_url_btn.setEnabled(False)
 
     def _on_proxy_error(self, error: str):
@@ -473,7 +483,7 @@ class MainWindow(QMainWindow):
             self.async_runner.clear_requests()
         self.request_list_widget.set_requests([])
         self.request_details_widget.clear()
-    
+
     def _copy_proxy_url(self):
         """Copy the proxy URL to clipboard."""
         port = int(self.config_widget.get_port())
@@ -481,18 +491,20 @@ class MainWindow(QMainWindow):
         clipboard = QApplication.clipboard()
         clipboard.setText(proxy_url)
         logger.info(f"Copied proxy URL to clipboard: {proxy_url}")
-        
+
         # Show a brief visual feedback
         original_text = self.copy_url_btn.text()
         original_style = self.copy_url_btn.styleSheet()
         self.copy_url_btn.setText("✓")
-        self.copy_url_btn.setStyleSheet("font-size: 16px; font-weight: bold; padding: 2px; color: white; background-color: green; border-radius: 3px;")
-        
+        self.copy_url_btn.setStyleSheet(
+            "font-size: 16px; font-weight: bold; padding: 2px; color: white; background-color: green; border-radius: 3px;"
+        )
+
         # Reset button after 500ms using QTimer
         def reset_button():
             self.copy_url_btn.setText(original_text)
             self.copy_url_btn.setStyleSheet(original_style)
-        
+
         QTimer.singleShot(500, reset_button)
 
     def _on_request_selected(self, request):
@@ -503,7 +515,9 @@ class MainWindow(QMainWindow):
         """Handle configuration changes."""
         logger.debug("Configuration changed")
         # Update displayed URL label immediately (but do not restart server here)
-        self.proxy_url_label.setText(f"http://127.0.0.1:{self.config_widget.get_port()}")
+        self.proxy_url_label.setText(
+            f"http://127.0.0.1:{self.config_widget.get_port()}"
+        )
 
         if self.config_widget.has_valid_config():
             logger.info(
@@ -525,11 +539,15 @@ class MainWindow(QMainWindow):
                     is_running = self.async_runner.proxy_server.is_running
                     current_port = int(self.async_runner.proxy_server.config.port)
                     if is_running and new_port != current_port:
-                        logger.info(f"Config saved and port changed from {current_port} to {new_port}. Restarting proxy...")
+                        logger.info(
+                            f"Config saved and port changed from {current_port} to {new_port}. Restarting proxy..."
+                        )
                         self.async_runner.stop_proxy()
                         QTimer.singleShot(800, self.async_runner.start_proxy)
                 except Exception:
-                    logger.exception("Error while attempting to restart proxy after save")
+                    logger.exception(
+                        "Error while attempting to restart proxy after save"
+                    )
 
             # Update Client Settings (Cheatsheet) text to new port and save, preserving user content
             try:

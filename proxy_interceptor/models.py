@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict
 
 
 @dataclass
@@ -10,7 +9,7 @@ class HttpRequest:
     timestamp: datetime
     method: str
     url: str
-    headers: Dict[str, str]
+    headers: dict[str, str]
     body: str
 
 
@@ -20,7 +19,7 @@ class HttpResponse:
 
     status_code: int
     status_text: str
-    headers: Dict[str, str]
+    headers: dict[str, str]
     body: str
 
 

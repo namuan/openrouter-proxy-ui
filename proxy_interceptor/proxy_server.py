@@ -1,14 +1,15 @@
 import asyncio
+import contextlib
 import json
 import logging
-from datetime import datetime
-from typing import Optional, List, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 import httpx
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import StreamingResponse, JSONResponse
 import uvicorn
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from .models import HttpRequest, HttpResponse, InterceptedRequest
 
@@ -28,8 +29,8 @@ class ProxyConfig:
     log_requests: bool = True
 
     # OpenRouter-specific configuration
-    openrouter_api_keys: List[str] = None
-    openrouter_api_models: List[str] = None
+    openrouter_api_keys: list[str] = None
+    openrouter_api_models: list[str] = None
     site_url: str = "http://localhost:8080"
     app_name: str = "OpenRouter Proxy Interceptor"
 
@@ -41,7 +42,11 @@ class ProxyConfig:
             self.openrouter_api_models = []
         # Align site_url with configured port if default was left
         try:
-            if not self.site_url or self.site_url.endswith(":8080") or self.site_url == "http://localhost:8080":
+            if (
+                not self.site_url
+                or self.site_url.endswith(":8080")
+                or self.site_url == "http://localhost:8080"
+            ):
                 self.site_url = f"http://localhost:{self.port}"
         except Exception:
             pass
@@ -57,7 +62,7 @@ class ProxyServer:
     def __init__(
         self,
         config: ProxyConfig,
-        on_intercept: Optional[Callable[[InterceptedRequest], None]] = None,
+        on_intercept: Callable[[InterceptedRequest], None] | None = None,
     ):
         self.config = config
         self.app = FastAPI(
@@ -111,6 +116,7 @@ class ProxyServer:
             )
             return idx
 
+    # ruff: noqa: C901
     async def _stream_response_generator(
         self,
         api_response: httpx.Response,
@@ -148,7 +154,7 @@ class ProxyServer:
                         pass
                 yield chunk
         except Exception as e:
-            logger.error(f"Error while streaming response: {e}")
+            logger.exception(f"Error while streaming response: {e}")
         finally:
             # Update the intercepted request with both raw and extracted content
             if intercepted_request and captured_chunks:
@@ -167,13 +173,15 @@ class ProxyServer:
                             f"Captured {len(full_content)} characters of raw streaming response"
                         )
                 except Exception as e:
-                    logger.error(f"Error capturing streaming content: {e}")
+                    logger.exception(f"Error capturing streaming content: {e}")
             await api_response.aclose()
 
+    # ruff: noqa: C901
     def _setup_routes(self):
         """Set up FastAPI routes."""
         logger.debug("Setting up FastAPI routes")
 
+        # ruff: noqa: C901
         @self.app.post("/v1/chat/completions")
         async def chat_completions(request: Request):
             """Handle OpenAI-compatible chat completion requests with key rotation and retry."""
@@ -336,10 +344,8 @@ class ProxyServer:
 
                         elif api_response.status_code == 429:
                             error_detail = f"Rate limit exceeded for API key index {key_index}, model '{model_name}' (index {model_index})"
-                            try:
+                            with contextlib.suppress(Exception):
                                 error_detail += f" Response: {api_response.text}"
-                            except Exception:
-                                pass
                             logger.warning(error_detail)
                             last_error_status = 429
                             last_error_detail = error_detail
@@ -356,7 +362,7 @@ class ProxyServer:
 
                 except httpx.RequestError as e:
                     error_detail = f"HTTPX Request Error with API key index {key_index}, model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
-                    logger.error(error_detail)
+                    logger.exception(error_detail)
                     last_error_status = 503
                     last_error_detail = error_detail
                     if i == num_models - 1:
@@ -410,7 +416,7 @@ class ProxyServer:
 
             except httpx.HTTPStatusError as e:
                 error_detail = f"Error fetching models: Status {e.response.status_code}, Response: {e.response.text}"
-                logger.error(error_detail)
+                logger.exception(error_detail)
                 raise HTTPException(
                     status_code=e.response.status_code, detail=error_detail
                 )
@@ -418,7 +424,7 @@ class ProxyServer:
                 error_detail = (
                     f"HTTPX Request Error fetching models: {e.__class__.__name__} - {e}"
                 )
-                logger.error(error_detail)
+                logger.exception(error_detail)
                 raise HTTPException(status_code=503, detail=error_detail)
             except Exception as e:
                 error_detail = (

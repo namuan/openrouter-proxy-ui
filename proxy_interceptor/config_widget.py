@@ -1,20 +1,20 @@
+import contextlib
 import json
 import logging
 import os
 import platform
 from pathlib import Path
-from typing import List
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
-    QTextEdit,
     QPushButton,
-    QGroupBox,
     QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,8 +27,8 @@ def get_config_dir() -> Path:
     if system == "Windows":
         # Windows: %APPDATA%\OpenRouterProxy
         config_dir = (
-                Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-                / "OpenRouterProxy"
+            Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+            / "OpenRouterProxy"
         )
     elif system == "Darwin":
         # macOS: ~/Library/Application Support/OpenRouterProxy
@@ -36,8 +36,8 @@ def get_config_dir() -> Path:
     else:
         # Linux/Unix: ~/.config/openrouter-proxy
         config_dir = (
-                Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-                / "openrouter-proxy"
+            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+            / "openrouter-proxy"
         )
 
     # Create directory if it doesn't exist
@@ -197,13 +197,13 @@ class ConfigWidget(QWidget):
         except Exception as e:
             # Emit error via status signal instead of dialog
             self.status.emit(f"Failed to save configuration: {e}", "error")
-            logger.error(f"Failed to save configuration: {e}")
+            logger.exception(f"Failed to save configuration: {e}")
 
     def _load_config(self):
         """Load configuration from file."""
         try:
             config_file = get_config_file_path()
-            with open(config_file, "r") as f:
+            with open(config_file) as f:
                 config_data = json.load(f)
 
             self.api_keys = config_data.get("api_keys", [])
@@ -242,7 +242,7 @@ class ConfigWidget(QWidget):
             logger.debug(f"Valid config check: {self.has_valid_config()}")
 
         except Exception as e:
-            logger.error(f"Failed to load configuration: {e}")
+            logger.exception(f"Failed to load configuration: {e}")
             # Use default configuration
             self.api_keys = []
             self.api_models = ["qwen/qwen3-coder:free", "openai/gpt-oss-20b:free"]
@@ -262,10 +262,8 @@ class ConfigWidget(QWidget):
         # Temporarily disconnect signals to prevent _parse_config from being called
         self.api_keys_text.textChanged.disconnect()
         self.api_models_text.textChanged.disconnect()
-        try:
+        with contextlib.suppress(Exception):
             self.port_spin.blockSignals(True)
-        except Exception:
-            pass
 
         # Update the UI with current configuration - mask API keys for security
         masked_keys = [self._mask_api_key(key) for key in self.api_keys]
@@ -274,20 +272,18 @@ class ConfigWidget(QWidget):
         try:
             self.port_spin.setValue(int(self.port))
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 self.port_spin.blockSignals(False)
-            except Exception:
-                pass
 
         # Reconnect the signals
         self.api_keys_text.textChanged.connect(self._on_config_changed)
         self.api_models_text.textChanged.connect(self._on_config_changed)
 
-    def get_api_keys(self) -> List[str]:
+    def get_api_keys(self) -> list[str]:
         """Get the configured API keys."""
         return self.api_keys.copy()
 
-    def get_api_models(self) -> List[str]:
+    def get_api_models(self) -> list[str]:
         """Get the configured API models."""
         return self.api_models.copy()
 

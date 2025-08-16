@@ -2,7 +2,19 @@
 name = "proxy-interceptor"
 version = "0.1.0"
 description = "A PyQt6 application for intercepting and displaying HTTP requests"
+authors = [{ name = "Developer", email = "developer@example.com" }]
+readme = "README.md"
+keywords = ['python', 'proxy', 'interceptor', 'http', 'pyqt6']
 requires-python = ">=3.11"
+classifiers = [
+    "Intended Audience :: Developers",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
     "PyQt6>=6.5.0",
     "fastapi>=0.104.0",
@@ -13,15 +25,88 @@ dependencies = [
     "python-dotenv>=1.1.1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/example/proxy-interceptor"
+Repository = "https://github.com/example/proxy-interceptor"
+Documentation = "https://github.com/example/proxy-interceptor"
+
 [project.scripts]
 proxy-interceptor = "proxy_interceptor.main:main"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.2.0",
+    "pre-commit>=2.20.0",
+    "tox-uv>=1.11.3",
+    "ruff>=0.12.9",
+    "pyinstaller>=6.15.0",
+]
+
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["proxy_interceptor"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+fix = true
+
+[tool.ruff.lint]
+select = [
+    # flake8-2020
+    "YTT",
+    # flake8-bandit
+    "S",
+    # flake8-bugbear
+    "B",
+    # flake8-builtins
+    "A",
+    # flake8-comprehensions
+    "C4",
+    # flake8-debugger
+    "T10",
+    # flake8-simplify
+    "SIM",
+    # isort
+    "I",
+    # mccabe
+    "C90",
+    # pycodestyle
+    "E", "W",
+    # pyflakes
+    "F",
+    # pygrep-hooks
+    "PGH",
+    # pyupgrade
+    "UP",
+    # ruff
+    "RUF",
+    # tryceratops
+    "TRY",
+]
+ignore = [
+    # LineTooLong
+    "E501",
+    # DoNotAssignLambda
+    "E731",
+    "TRY002",
+    "TRY003",
+    "TRY300",
+    "TRY301",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
 
 [tool.ruff.format]
 quote-style = "double"
+preview = true
 
 [dependency-groups]
 dev = [

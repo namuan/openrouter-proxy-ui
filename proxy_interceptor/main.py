@@ -1,7 +1,8 @@
-import sys
 import logging
-from PyQt6.QtWidgets import QApplication
+import sys
+
 from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication
 
 from .main_window import MainWindow
 

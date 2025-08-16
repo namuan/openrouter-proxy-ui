@@ -1,10 +1,11 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTextEdit, QSplitter
-from PyQt6.QtGui import QFont
-from PyQt6.QtCore import Qt
-import logging
 import json
+import logging
 import xml.dom.minidom
-from typing import Optional
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
+from PyQt6.QtWidgets import QLabel, QSplitter, QTextEdit, QVBoxLayout, QWidget
+
 from .models import InterceptedRequest
 
 logger = logging.getLogger(__name__)
@@ -155,7 +156,7 @@ class RequestDetailsWidget(QWidget):
         except Exception:
             return html
 
-    def set_request(self, request: Optional[InterceptedRequest]):
+    def set_request(self, request: InterceptedRequest | None):
         """Display details for the given request. If None, clear UI."""
         self.current_request = request
 
