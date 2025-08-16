@@ -1,4 +1,4 @@
-.PHONY: install run dev clean lint format test
+.PHONY: install run dev clean lint format test icons
 
 # Install dependencies
 install:
@@ -19,6 +19,9 @@ clean:
 package: clean
 	uv run pyinstaller proxy_interceptor.spec --clean
 
+install-macosx: package ## Installs application in users Application folder
+	./scripts/install-macosx.sh OpenRouterProxy.app
+
 # Check code (lint and format)
 check:
 	uv run ruff check .
@@ -29,6 +32,10 @@ check:
 test:
 	uv run pytest
 
+# Generate high-resolution icons
+icons:
+	./generate_icon.sh assets/or-proxy.png or-proxy
+
 # Help target
 help:
 	@echo "Available targets:"
@@ -37,4 +44,5 @@ help:
 	@echo "  clean   - Clean build artifacts"
 	@echo "  check   - Run checks"
 	@echo "  test    - Run tests"
+	@echo "  icons   - Generate high-resolution icons from PNG source"
 	@echo "  help    - Show this help"
