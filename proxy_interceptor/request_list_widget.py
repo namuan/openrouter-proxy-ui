@@ -11,8 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 class RequestListWidget(QWidget):
-    """Widget displaying a list of intercepted requests."""
-
     request_selected = pyqtSignal(InterceptedRequest)
 
     def __init__(self):
@@ -22,18 +20,15 @@ class RequestListWidget(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        """Set up the user interface."""
         logger.debug("Setting up RequestListWidget UI")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
 
-        # Header
         header = QLabel("Intercepted Requests")
         header.setObjectName("header")
         layout.addWidget(header)
 
-        # Request list
         self.request_list = QListWidget()
         self.request_list.setAlternatingRowColors(True)
         self.request_list.itemClicked.connect(self._on_request_selected)
@@ -41,20 +36,16 @@ class RequestListWidget(QWidget):
         logger.debug("RequestListWidget UI setup complete")
 
     def set_requests(self, requests: list[InterceptedRequest]):
-        """Update the list of requests."""
         logger.info(f"Setting {len(requests)} requests in list widget")
         self.requests = requests
         self._update_list()
 
     def add_request(self, request: InterceptedRequest):
-        """Append a single intercepted request to the list and UI."""
         self.requests.append(request)
         item = QListWidgetItem()
-        # Extract path from URL
         parsed_url = urlparse(request.request.url)
         path = parsed_url.path if parsed_url.path else "/"
 
-        # Extract model from request body if available
         model_name = "unknown"
         try:
             if request.request.body:
@@ -74,17 +65,14 @@ class RequestListWidget(QWidget):
         )
 
     def _update_list(self):
-        """Update the list widget with current requests."""
         logger.debug(f"Updating list widget with {len(self.requests)} requests")
         self.request_list.clear()
 
         for i, request in enumerate(self.requests):
             item = QListWidgetItem()
-            # Extract path from URL
             parsed_url = urlparse(request.request.url)
             path = parsed_url.path if parsed_url.path else "/"
 
-            # Extract model from request body if available
             model_name = "unknown"
             try:
                 if request.request.body:
@@ -104,13 +92,10 @@ class RequestListWidget(QWidget):
             )
 
     def _on_request_selected(self, item: QListWidgetItem):
-        """Handle request selection."""
         request = item.data(Qt.ItemDataRole.UserRole)
-        # Extract path from URL for logging
         parsed_url = urlparse(request.request.url)
         path = parsed_url.path if parsed_url.path else "/"
 
-        # Extract model from request body if available
         model_name = "unknown"
         try:
             if request.request.body:

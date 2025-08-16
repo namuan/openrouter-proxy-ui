@@ -15,32 +15,24 @@ from .models import HttpRequest, HttpResponse, InterceptedRequest
 
 logger = logging.getLogger(__name__)
 
-# Environment variable loading helper
-# Environment variable loading functions removed - configuration now comes from config widget only
-
 
 @dataclass
 class ProxyConfig:
-    """Configuration for the proxy server."""
-
     host: str = "127.0.0.1"
     port: int = 8080
     target_base_url: str = "https://openrouter.ai/api/v1"
     log_requests: bool = True
 
-    # OpenRouter-specific configuration
     openrouter_api_keys: list[str] = None
     openrouter_api_models: list[str] = None
     site_url: str = "http://localhost:8080"
     app_name: str = "OpenRouter Proxy Interceptor"
 
     def __post_init__(self):
-        # Ensure we have lists/sets even if None provided
         if self.openrouter_api_keys is None:
             self.openrouter_api_keys = []
         if self.openrouter_api_models is None:
             self.openrouter_api_models = []
-        # Align site_url with configured port if default was left
         try:
             if (
                 not self.site_url
@@ -57,8 +49,6 @@ class ProxyConfig:
 
 
 class ProxyServer:
-    """HTTP proxy server for intercepting and logging requests."""
-
     def __init__(
         self,
         config: ProxyConfig,
@@ -75,15 +65,12 @@ class ProxyServer:
         self.server_task = None
         self.on_intercept = on_intercept
 
-        # Key rotation state
         self._current_key_index = 0
         self._key_lock = asyncio.Lock()
 
-        # Model rotation state
         self._current_model_index = 0
         self._model_lock = asyncio.Lock()
 
-        # HTTP client for forwarding requests
         self._client = None
 
         logger.info("Initializing ProxyServer")
@@ -91,7 +78,6 @@ class ProxyServer:
         logger.info("ProxyServer routes configured")
 
     async def _get_next_key_index(self) -> int:
-        """Safely get the next key index for round-robin rotation."""
         async with self._key_lock:
             if not self.config.openrouter_api_keys:
                 raise HTTPException(
@@ -104,7 +90,6 @@ class ProxyServer:
             return idx
 
     async def _get_next_model_index(self) -> int:
-        """Safely get the next model index for round-robin rotation."""
         async with self._model_lock:
             if not self.config.openrouter_api_models:
                 raise HTTPException(
@@ -122,21 +107,19 @@ class ProxyServer:
         api_response: httpx.Response,
         intercepted_request: InterceptedRequest = None,
     ):
-        """Async generator to stream chunks from the OpenRouter response while capturing content."""
         captured_chunks = []
         extracted_content = []
         try:
             async for chunk in api_response.aiter_bytes():
                 if intercepted_request:
                     captured_chunks.append(chunk)
-                    # Parse SSE data to extract content
                     try:
                         chunk_text = chunk.decode("utf-8")
                         for line in chunk_text.split("\n"):
                             if line.startswith("data: ") and not line.startswith(
                                 "data: [DONE]"
                             ):
-                                json_data = line[6:]  # Remove 'data: ' prefix
+                                json_data = line[6:]
                                 if json_data.strip():
                                     data = json.loads(json_data)
                                     if "choices" in data and len(data["choices"]) > 0:
@@ -150,17 +133,14 @@ class ProxyServer:
                         KeyError,
                         IndexError,
                     ):
-                        # Skip malformed chunks
                         pass
                 yield chunk
         except Exception:
             logger.exception("Error while streaming response")
         finally:
-            # Update the intercepted request with both raw and extracted content
             if intercepted_request and captured_chunks:
                 try:
                     full_content = b"".join(captured_chunks).decode("utf-8")
-                    # Store both raw SSE data and extracted readable content
                     intercepted_request.response.raw_body = full_content
                     if extracted_content:
                         readable_content = "".join(extracted_content)
@@ -179,13 +159,11 @@ class ProxyServer:
 
     # ruff: noqa: C901
     def _setup_routes(self):
-        """Set up FastAPI routes."""
         logger.debug("Setting up FastAPI routes")
 
         # ruff: noqa: C901
         @self.app.post("/v1/chat/completions")
         async def chat_completions(request: Request):
-            """Handle OpenAI-compatible chat completion requests with key rotation and retry."""
             logger.info("Received chat completions request")
 
             try:
@@ -195,11 +173,9 @@ class ProxyServer:
 
             is_streaming = request_data.get("stream", False)
 
-            # Get next API key using round-robin rotation
             key_index = await self._get_next_key_index()
             api_key = self.config.openrouter_api_keys[key_index]
 
-            # Start with current model (don't advance until there's an error)
             current_model_index = self._current_model_index
             last_error_status = 500
             last_error_detail = "All API models failed."
@@ -209,13 +185,10 @@ class ProxyServer:
                 model_index = (current_model_index + i) % num_models
                 model_name = self.config.openrouter_api_models[model_index]
 
-                # Update request data with current model
                 request_data["model"] = model_name
 
-                # Get request body as string for logging (with updated model)
                 body_str = json.dumps(request_data)
 
-                # Create HttpRequest for logging
                 http_request = HttpRequest(
                     timestamp=datetime.now(),
                     method=request.method,
@@ -239,7 +212,6 @@ class ProxyServer:
                     target_url = f"{self.config.target_base_url}/chat/completions"
 
                     if is_streaming:
-                        # Make streaming request
                         req = self._client.build_request(
                             "POST", target_url, json=request_data, headers=headers
                         )
@@ -250,7 +222,6 @@ class ProxyServer:
                                 f"Streaming success with API key index {key_index}, model '{model_name}' (index {model_index})"
                             )
 
-                            # For streaming, we'll capture the response body as it streams
                             http_response = HttpResponse(
                                 status_code=api_response.status_code,
                                 status_text=api_response.reason_phrase,
@@ -308,7 +279,6 @@ class ProxyServer:
                                     detail=last_error_detail,
                                 )
                     else:
-                        # Make non-streaming request
                         api_response = await self._client.post(
                             target_url, json=request_data, headers=headers
                         )
@@ -318,13 +288,10 @@ class ProxyServer:
                                 f"Non-streaming success with API key index {key_index}, model '{model_name}' (index {model_index})"
                             )
 
-                            # Create response object for logging with both raw and parsed content
                             raw_text = api_response.text
                             try:
-                                # Try to extract content from choices for better readability
                                 parsed_json = api_response.json()
 
-                                # Extract content from choices if available (similar to streaming)
                                 extracted_content = ""
                                 if (
                                     "choices" in parsed_json
@@ -337,13 +304,11 @@ class ProxyServer:
                                     ):
                                         extracted_content = choice["message"]["content"]
 
-                                # Use extracted content if available, otherwise format full JSON
                                 if extracted_content:
                                     formatted_body = extracted_content
                                 else:
                                     formatted_body = json.dumps(parsed_json, indent=2)
                             except (json.JSONDecodeError, ValueError):
-                                # If not valid JSON, use raw text for both
                                 formatted_body = raw_text
 
                             http_response = HttpResponse(
@@ -410,7 +375,6 @@ class ProxyServer:
                             status_code=last_error_status, detail=last_error_detail
                         ) from e
 
-            # If we get here, all models failed - advance to next model for future requests
             async with self._model_lock:
                 self._current_model_index = (self._current_model_index + 1) % len(
                     self.config.openrouter_api_models
@@ -422,7 +386,6 @@ class ProxyServer:
 
         @self.app.get("/v1/models")
         async def get_models():
-            """Fetch the list of available models from OpenRouter."""
             if not self.config.openrouter_api_keys:
                 raise HTTPException(
                     status_code=503, detail="No OpenRouter API keys configured"
@@ -471,20 +434,15 @@ class ProxyServer:
                 "message": "OpenRouter Proxy Interceptor is running. Use POST /v1/chat/completions and GET /v1/models."
             }
 
-        # Legacy catch-all route removed
-
     async def start(self):
-        """Start the proxy server."""
         if self.is_running:
             logger.warning("Proxy server already running")
             return
 
         logger.info(f"Starting proxy server on {self.config.host}:{self.config.port}")
 
-        # Initialize HTTP client
         self._client = httpx.AsyncClient(timeout=600.0)
 
-        # Configure uvicorn with proper shutdown handling
         config = uvicorn.Config(
             self.app,
             host=self.config.host,
@@ -499,14 +457,12 @@ class ProxyServer:
         logger.info("Proxy server started successfully")
 
     async def stop(self):
-        """Stop the proxy server."""
         if not self.is_running or not self.server:
             logger.warning("Proxy server not running")
             return
 
         logger.info("Stopping proxy server")
 
-        # Close HTTP client
         if self._client:
             await self._client.aclose()
             self._client = None
@@ -526,12 +482,10 @@ class ProxyServer:
         logger.info("Proxy server stopped")
 
     def get_requests(self) -> list[InterceptedRequest]:
-        """Get all intercepted requests."""
         logger.debug(f"Retrieved {len(self.intercepted_requests)} intercepted requests")
         return self.intercepted_requests.copy()
 
     def clear_requests(self):
-        """Clear all intercepted requests."""
         count = len(self.intercepted_requests)
         self.intercepted_requests.clear()
         logger.info(f"Cleared {count} intercepted requests")

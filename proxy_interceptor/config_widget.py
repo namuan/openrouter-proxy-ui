@@ -24,41 +24,33 @@ logger = logging.getLogger(__name__)
 
 
 def get_config_dir() -> Path:
-    """Get the platform-appropriate configuration directory."""
     system = platform.system()
 
     if system == "Windows":
-        # Windows: %APPDATA%\OpenRouterProxy
         config_dir = (
             Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
             / "OpenRouterProxy"
         )
     elif system == "Darwin":
-        # macOS: ~/Library/Application Support/OpenRouterProxy
         config_dir = Path.home() / "Library" / "Application Support" / "OpenRouterProxy"
     else:
-        # Linux/Unix: ~/.config/openrouter-proxy
         config_dir = (
             Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
             / "openrouter-proxy"
         )
 
-    # Create directory if it doesn't exist
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
 
 
 def get_config_file_path() -> Path:
-    """Get the full path to the configuration file."""
     return get_config_dir() / "proxy_config.json"
 
 
 class ConfigWidget(QWidget):
-    """Widget for configuring API keys and models."""
-
-    config_changed = pyqtSignal()  # Emitted when configuration changes
-    config_saved = pyqtSignal()  # Emitted when configuration is saved
-    status = pyqtSignal(str, str)  # message, level ('info'|'success'|'error')
+    config_changed = pyqtSignal()
+    config_saved = pyqtSignal()
+    status = pyqtSignal(str, str)
 
     def __init__(self):
         super().__init__()
@@ -68,13 +60,11 @@ class ConfigWidget(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        """Set up the configuration UI."""
         logger.debug("Setting up ConfigWidget UI")
 
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
 
-        # API Keys section
         api_keys_group = QGroupBox("OpenRouter API Keys (One per line)")
         api_keys_layout = QVBoxLayout(api_keys_group)
         api_keys_layout.setSpacing(8)
@@ -87,12 +77,10 @@ class ConfigWidget(QWidget):
 
         layout.addWidget(api_keys_group)
 
-        # API Models section
         self.model_selection_widget = ModelSelectionWidget()
         self.model_selection_widget.models_selected.connect(self._on_models_selected)
         layout.addWidget(self.model_selection_widget)
 
-        # Port section
         port_group = QGroupBox("Proxy Server Port")
         port_layout = QHBoxLayout(port_group)
         port_layout.setSpacing(8)
@@ -102,14 +90,13 @@ class ConfigWidget(QWidget):
         self.port_input.setValidator(QIntValidator(1, 65535))
         self.port_input.setText(str(self.port))
         self.port_input.textChanged.connect(self._on_config_changed)
-        self.port_input.setMaximumWidth(100)  # Limit the width of the input field
+        self.port_input.setMaximumWidth(100)
         port_layout.addWidget(port_label)
         port_layout.addWidget(self.port_input)
-        port_layout.addStretch()  # Add stretch to push widgets to the left
+        port_layout.addStretch()
 
         layout.addWidget(port_group)
 
-        # Buttons
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
 
@@ -122,54 +109,42 @@ class ConfigWidget(QWidget):
 
         layout.addStretch()
 
-        # Load existing configuration
         self._load_config()
 
         logger.debug("ConfigWidget UI setup complete")
 
     def _on_config_changed(self):
-        """Handle configuration changes."""
         self._parse_config()
         self.config_changed.emit()
 
     def _on_models_selected(self, models):
-        """Handle model selection changes."""
         self.api_models = models
         self.config_changed.emit()
 
     def _parse_config(self):
-        """Parse configuration from UI elements."""
-        # Parse API keys - handle masked keys
         api_keys_text = self.api_keys_text.toPlainText().strip()
         input_keys = [key.strip() for key in api_keys_text.split("\n") if key.strip()]
 
-        # Process each input key
         parsed_keys = []
         for i, input_key in enumerate(input_keys):
-            # If the input key contains asterisks, check if it matches a masked version of an existing key
             if "*" in input_key and i < len(self.api_keys):
                 original_key = self.api_keys[i]
                 if input_key == self._mask_api_key(original_key):
-                    # User didn't change this key, keep the original
                     parsed_keys.append(original_key)
                 else:
-                    # User modified the masked key, treat as new key
                     parsed_keys.append(input_key)
             else:
-                # New key or key without masking
                 parsed_keys.append(input_key)
 
         self.api_keys = parsed_keys
 
-        # Parse port
         port_text = self.port_input.text()
         if port_text:
             self.port = int(port_text)
         else:
-            self.port = 8080  # Default port if empty
+            self.port = 8080
 
     def _save_config(self):
-        """Save configuration to file."""
         try:
             config_data = {
                 "api_keys": self.api_keys,
@@ -182,35 +157,30 @@ class ConfigWidget(QWidget):
             with open(config_file, "w") as f:
                 json.dump(config_data, f, indent=2)
 
-            # Inform via status signal instead of dialog
             self.status.emit(f"Configuration saved to: {config_file}", "success")
             logger.info(f"Configuration saved to {config_file}")
 
-            # Emit saved signal so the app can react (e.g., restart server)
             try:
                 self.config_saved.emit()
             except Exception:
                 logger.exception("Failed to emit config_saved signal")
 
         except Exception as e:
-            # Emit error via status signal instead of dialog
             self.status.emit(f"Failed to save configuration: {e}", "error")
             logger.exception("Failed to save configuration")
 
     def _load_config(self):
-        """Load configuration from file."""
         try:
             config_file = get_config_file_path()
             with open(config_file) as f:
                 config_data = json.load(f)
 
             self.api_keys = config_data.get("api_keys", [])
-            # Ensure we have default models if none are saved
             saved_models = config_data.get("api_models", [])
             logger.debug(
                 f"Raw saved_models from config: {saved_models}, type: {type(saved_models)}"
             )
-            if not saved_models:  # If empty list or None
+            if not saved_models:
                 logger.debug("Using default models because saved_models is empty")
                 self.api_models = ["qwen/qwen3-coder:free", "openai/gpt-oss-20b:free"]
             else:
@@ -228,7 +198,6 @@ class ConfigWidget(QWidget):
             logger.debug(f"Valid config check: {self.has_valid_config()}")
 
         except FileNotFoundError:
-            # Use default configuration
             self.api_keys = []
             self.api_models = ["qwen/qwen3-coder:free", "openai/gpt-oss-20b:free"]
             self.auth_tokens = set()
@@ -241,53 +210,40 @@ class ConfigWidget(QWidget):
 
         except Exception:
             logger.exception("Failed to load configuration")
-            # Use default configuration
             self.api_keys = []
             self.api_models = ["qwen/qwen3-coder:free", "openai/gpt-oss-20b:free"]
             self.auth_tokens = set()
             self._update_ui()
 
-    # Environment variable loading method removed - configuration now comes from config widget only
-
     def _mask_api_key(self, api_key: str) -> str:
-        """Mask API key showing only first 20 characters."""
         if len(api_key) <= 20:
             return api_key
         return api_key[:20] + "*" * (len(api_key) - 20)
 
     def _update_ui(self):
-        """Update UI elements with current configuration."""
-        # Temporarily disconnect signals to prevent _parse_config from being called
         self.api_keys_text.textChanged.disconnect()
         with contextlib.suppress(Exception):
             self.port_input.textChanged.disconnect()
 
-        # Update the UI with current configuration - mask API keys for security
         masked_keys = [self._mask_api_key(key) for key in self.api_keys]
         self.api_keys_text.setPlainText("\n".join(masked_keys))
 
-        # Update model selection widget
         self.model_selection_widget.set_selected_models(self.api_models)
 
         try:
             self.port_input.setText(str(int(self.port)))
         finally:
-            # Reconnect the signals
             self.api_keys_text.textChanged.connect(self._on_config_changed)
             self.port_input.textChanged.connect(self._on_config_changed)
 
     def get_api_keys(self) -> list[str]:
-        """Get the configured API keys."""
         return self.api_keys.copy()
 
     def get_api_models(self) -> list[str]:
-        """Get the configured API models."""
         return self.api_models.copy()
 
     def get_port(self) -> int:
-        """Get the configured server port."""
         return int(self.port)
 
     def has_valid_config(self) -> bool:
-        """Check if the configuration is valid."""
         return len(self.api_keys) > 0 and len(self.api_models) > 0

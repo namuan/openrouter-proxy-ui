@@ -27,20 +27,16 @@ logger = logging.getLogger(__name__)
 
 
 class StatusIndicator(QLabel):
-    """A colored dot widget to show proxy server status."""
-
     def __init__(self):
         super().__init__()
-        self.status = "stopped"  # stopped, running, error
+        self.status = "stopped"
         self.setFixedSize(16, 16)
         self.setToolTip("Proxy Server Status")
 
     def set_status(self, status: str):
-        """Set the status and update the display."""
         self.status = status
         self.update()
 
-        # Update tooltip
         if status == "running":
             self.setToolTip("Proxy Server: Running")
         elif status == "error":
@@ -49,17 +45,15 @@ class StatusIndicator(QLabel):
             self.setToolTip("Proxy Server: Stopped")
 
     def paintEvent(self, event):
-        """Paint the status indicator dot."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        # Choose color based on status
         if self.status == "running":
-            color = QColor(34, 197, 94)  # Green
+            color = QColor(34, 197, 94)
         elif self.status == "error":
-            color = QColor(239, 68, 68)  # Red
+            color = QColor(239, 68, 68)
         else:
-            color = QColor(156, 163, 175)  # Gray
+            color = QColor(156, 163, 175)
 
         painter.setBrush(color)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -67,15 +61,11 @@ class StatusIndicator(QLabel):
 
 
 class InterceptBridge(QObject):
-    """Signal bridge to safely emit intercepted requests to the UI thread."""
-
-    request_intercepted = pyqtSignal(object)  # emits InterceptedRequest
+    request_intercepted = pyqtSignal(object)
 
 
 class AsyncRunner(QThread):
-    """Thread for running async operations."""
-
-    loop_ready = pyqtSignal(object)  # Emits the event loop when ready
+    loop_ready = pyqtSignal(object)
     proxy_started = pyqtSignal()
     proxy_stopped = pyqtSignal()
     proxy_error = pyqtSignal(str)
@@ -88,12 +78,10 @@ class AsyncRunner(QThread):
         self.bridge = InterceptBridge()
 
     def run(self):
-        """Run the async event loop in this thread."""
         logger.info("Starting async event loop thread")
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
-        # Schedule a call to emit the loop reference
         self.loop.call_soon_threadsafe(lambda: self.loop_ready.emit(self.loop))
 
         try:
@@ -103,7 +91,6 @@ class AsyncRunner(QThread):
             self.loop.close()
 
     def start_proxy(self):
-        """Start the proxy server."""
         if not self.loop or not self.loop.is_running():
             logger.warning("Cannot start proxy - loop not ready, queuing start request")
             self._start_requested = True
@@ -112,9 +99,7 @@ class AsyncRunner(QThread):
         asyncio.run_coroutine_threadsafe(self._start_proxy(), self.loop)
 
     async def _start_proxy(self):
-        """Async implementation to start the proxy server."""
         try:
-            # Always fetch the latest configuration from the ConfigWidget
             main_window = None
             for widget in QApplication.allWidgets():
                 if isinstance(widget, MainWindow):
@@ -132,7 +117,6 @@ class AsyncRunner(QThread):
             cfg_site_url = f"http://localhost:{cfg_port}"
 
             if self.proxy_server is None:
-                # Create a new ProxyServer with the latest config
                 config = ProxyConfig(
                     openrouter_api_keys=cfg_keys,
                     openrouter_api_models=cfg_models,
@@ -141,7 +125,6 @@ class AsyncRunner(QThread):
                 )
                 self.proxy_server = ProxyServer(config, on_intercept=self._on_intercept)
             else:
-                # Update existing server config before (re)starting
                 self.proxy_server.config.openrouter_api_keys = cfg_keys
                 self.proxy_server.config.openrouter_api_models = cfg_models
                 self.proxy_server.config.port = cfg_port
@@ -154,12 +137,9 @@ class AsyncRunner(QThread):
             self.proxy_error.emit(str(e))
 
     def _on_intercept(self, intercepted):
-        """Called by ProxyServer thread when a request is intercepted."""
-        # This callback runs in the proxy thread context; emit via signal to UI thread
         self.bridge.request_intercepted.emit(intercepted)
 
     def stop_proxy(self):
-        """Stop the proxy server."""
         if not self.loop or not self.loop.is_running():
             logger.warning("Cannot stop proxy - loop not ready")
             return
@@ -167,7 +147,6 @@ class AsyncRunner(QThread):
         asyncio.run_coroutine_threadsafe(self._stop_proxy(), self.loop)
 
     async def _stop_proxy(self):
-        """Async implementation to stop the proxy server."""
         try:
             if self.proxy_server:
                 await self.proxy_server.stop()
@@ -177,18 +156,15 @@ class AsyncRunner(QThread):
             self.proxy_error.emit(str(e))
 
     def get_requests(self) -> list:
-        """Get intercepted requests from the proxy server."""
         if self.proxy_server:
             return self.proxy_server.get_requests()
         return []
 
     def clear_requests(self):
-        """Clear intercepted requests."""
         if self.proxy_server:
             self.proxy_server.clear_requests()
 
     def stop(self):
-        """Stop the thread by stopping its event loop."""
         if self.loop and self.loop.is_running():
             logger.info("Stopping AsyncRunner")
             self.loop.call_soon_threadsafe(self.loop.stop)
@@ -197,33 +173,26 @@ class AsyncRunner(QThread):
 
 
 class MainWindow(QMainWindow):
-    """Main application window."""
-
     def __init__(self):
         super().__init__()
         self.async_runner: AsyncRunner | None = None
         self.setWindowTitle("OpenRouter Proxy Interceptor")
         self.setGeometry(100, 100, 1200, 800)
 
-        # Apply modern stylesheet
         self.setStyleSheet(STYLESHEET)
 
         self.intercept_bridge = InterceptBridge()
         self.intercept_bridge.request_intercepted.connect(self._on_request_intercepted)
 
-        # Create configuration widget
         self.config_widget = ConfigWidget()
         self.config_widget.config_changed.connect(self._on_config_changed)
-        # React only on explicit save for server restarts
         self.config_widget.config_saved.connect(self._on_config_saved)
 
-        # Create cheatsheet widget
         self.cheatsheet_widget = CheatsheetWidget()
 
         logger.info("Initializing MainWindow")
         self._setup_ui()
 
-        # Timer and queue for status label auto-hide and sequencing
         from collections import deque
 
         self._status_timer = QTimer(self)
@@ -232,7 +201,6 @@ class MainWindow(QMainWindow):
         self._status_queue = deque()
         self._status_showing = False
 
-        # Wire status signals from child widgets
         try:
             if hasattr(self.config_widget, "status"):
                 self.config_widget.status.connect(
@@ -251,21 +219,17 @@ class MainWindow(QMainWindow):
         self._auto_start_proxy()
 
     def _setup_ui(self):
-        """Set up the user interface."""
         logger.debug("Setting up UI")
 
-        # Create central widget and main layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)
 
-        # Create control buttons
         control_layout = QHBoxLayout()
         control_layout.setSpacing(10)
 
-        # Add status indicator
         self.status_indicator = StatusIndicator()
         control_layout.addWidget(self.status_indicator)
 
@@ -278,26 +242,23 @@ class MainWindow(QMainWindow):
         self.clear_btn.clicked.connect(self._clear_requests)
         control_layout.addWidget(self.clear_btn)
 
-        # Add proxy URL label and copy button
         self.proxy_url_label = QLabel(
             f"http://127.0.0.1:{self.config_widget.get_port()}"
         )
         self.proxy_url_label.setObjectName("proxyUrlLabel")
-        self.proxy_url_label.setEnabled(False)  # Start greyed out
+        self.proxy_url_label.setEnabled(False)
         control_layout.addWidget(self.proxy_url_label)
 
-        # Add copy button with font glyph
         self.copy_url_btn = QPushButton("⧉")
         self.copy_url_btn.setObjectName("copyUrlBtn")
         self.copy_url_btn.setToolTip("Copy proxy URL to clipboard")
         self.copy_url_btn.setFixedSize(25, 25)
-        self.copy_url_btn.setEnabled(False)  # Start disabled
+        self.copy_url_btn.setEnabled(False)
         self.copy_url_btn.clicked.connect(self._copy_proxy_url)
         control_layout.addWidget(self.copy_url_btn)
 
         control_layout.addStretch()
 
-        # Status message label (top-right)
         self.status_label = QLabel("")
         self.status_label.setObjectName("statusLabel")
         self.status_label.setVisible(False)
@@ -305,37 +266,29 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(control_layout)
 
-        # Create tab widget
         self.tab_widget = QTabWidget()
 
-        # Main tab with request list and details
         main_tab = QWidget()
         main_tab_layout = QVBoxLayout(main_tab)
         main_tab_layout.setContentsMargins(10, 10, 10, 10)
 
-        # Create splitter for request list and details
         splitter = QSplitter()
-        splitter.setHandleWidth(3)  # Make handle more visible
+        splitter.setHandleWidth(3)
 
-        # Request list widget
         self.request_list_widget = RequestListWidget()
         self.request_list_widget.request_selected.connect(self._on_request_selected)
         splitter.addWidget(self.request_list_widget)
 
-        # Request details widget
         self.request_details_widget = RequestDetailsWidget()
         splitter.addWidget(self.request_details_widget)
 
-        # Set splitter proportions - expand request list more by default
-        splitter.setStretchFactor(0, 1)  # Request list gets more space
-        splitter.setStretchFactor(1, 2)  # Details gets less space
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
 
-        # Set initial sizes to give more space to request list
-        splitter.setSizes([150, 500])  # Request list: 400px, Details: 200px
+        splitter.setSizes([150, 500])
 
         main_tab_layout.addWidget(splitter)
 
-        # Add tabs
         self.tab_widget.addTab(main_tab, "Requests")
         self.tab_widget.addTab(self.config_widget, "Configuration")
         self.tab_widget.addTab(self.cheatsheet_widget, "Client Settings")
@@ -345,31 +298,24 @@ class MainWindow(QMainWindow):
         logger.debug("UI setup complete")
 
     def show_status(self, message: str, level: str = "info", duration: int = 4000):
-        """Queue and show a temporary status message in the top-right label.
-        - level: one of 'info', 'success', 'error'.
-        - duration: milliseconds to auto-hide.
-        Messages are queued to avoid overwriting an earlier status update.
-        """
-        # If something is currently showing, enqueue and return
         if getattr(self, "_status_showing", False):
             try:
                 self._status_queue.append((message, level, duration))
                 return
             except Exception:
-                # Fallback: if queue missing, proceed to immediate show
                 logger.debug("Status queue not available, showing status immediately")
 
-        # Otherwise, show immediately
         self._display_status_now(message, level, duration)
 
     def _display_status_now(self, message: str, level: str, duration: int):
-        # Use dynamic property for level-driven styling
         try:
             self.status_label.setProperty("level", level)
             self.status_label.style().unpolish(self.status_label)
             self.status_label.style().polish(self.status_label)
         except Exception:
-            logger.debug("Failed to repolish status_label after level change", exc_info=True)
+            logger.debug(
+                "Failed to repolish status_label after level change", exc_info=True
+            )
         self.status_label.setText(message)
         self.status_label.setVisible(True)
         self._status_showing = True
@@ -378,27 +324,22 @@ class MainWindow(QMainWindow):
         self._status_timer.start(max(1000, duration))
 
     def _on_status_timeout(self):
-        """Advance the status queue or hide if empty."""
         try:
             if self._status_queue and len(self._status_queue) > 0:
                 next_msg, next_level, next_duration = self._status_queue.popleft()
                 self._display_status_now(next_msg, next_level, next_duration)
             else:
-                # Nothing else to show
                 self.status_label.setVisible(False)
                 self._status_showing = False
         except Exception:
-            # On any error, hide and reset state
             self.status_label.setVisible(False)
             self._status_showing = False
 
     def _auto_start_proxy(self):
-        """Auto-start the proxy server when the application starts."""
         logger.info("Auto-starting proxy server")
         self._toggle_proxy()
 
     def _toggle_proxy(self):
-        """Toggle the proxy server on/off."""
         logger.info("Toggle proxy button clicked")
 
         if self.async_runner is None:
@@ -408,11 +349,9 @@ class MainWindow(QMainWindow):
             self.async_runner.proxy_started.connect(self._on_proxy_started)
             self.async_runner.proxy_stopped.connect(self._on_proxy_stopped)
             self.async_runner.proxy_error.connect(self._on_proxy_error)
-            # Connect live update signal
             self.async_runner.bridge.request_intercepted.connect(
                 self._on_request_intercepted
             )
-            # Queue the start request before starting the thread
             self.async_runner._start_requested = True
             self.async_runner.start()
             return
@@ -425,28 +364,23 @@ class MainWindow(QMainWindow):
             self.async_runner.stop_proxy()
 
     def _on_loop_ready(self):
-        """Called when the async event loop is ready."""
         logger.info("Async event loop is ready")
-        # If start was requested before loop was ready, start it now
         if self.async_runner and self.async_runner._start_requested:
             logger.info("Starting proxy that was queued")
             self.async_runner._start_requested = False
             self.async_runner.start_proxy()
 
     def _on_proxy_started(self):
-        """Called when the proxy server has started."""
         logger.info("Proxy server started successfully")
         self.toggle_proxy_btn.setText("Stop Proxy")
         self.status_indicator.set_status("running")
         self.proxy_url_label.setEnabled(True)
-        # Update displayed URL to current port
         self.proxy_url_label.setText(
             f"http://127.0.0.1:{self.config_widget.get_port()}"
         )
         self.copy_url_btn.setEnabled(True)
 
     def _on_proxy_stopped(self):
-        """Called when the proxy server has stopped."""
         logger.info("Proxy server stopped")
         self.toggle_proxy_btn.setText("Start Proxy")
         self.status_indicator.set_status("stopped")
@@ -454,18 +388,15 @@ class MainWindow(QMainWindow):
         self.copy_url_btn.setEnabled(False)
 
     def _on_proxy_error(self, error: str):
-        """Called when a proxy error occurs."""
         logger.error(f"Proxy error: {error}")
         self.status_indicator.set_status("error")
         self.show_status(f"Proxy error: {error}", level="error")
 
     def _on_request_intercepted(self, intercepted):
-        """Live-update the UI when a new request is intercepted."""
         logger.info("New intercepted request received; updating UI list")
         self.request_list_widget.add_request(intercepted)
 
     def _clear_requests(self):
-        """Clear all requests."""
         logger.info("Clear button clicked")
         if self.async_runner:
             self.async_runner.clear_requests()
@@ -473,23 +404,22 @@ class MainWindow(QMainWindow):
         self.request_details_widget.clear()
 
     def _copy_proxy_url(self):
-        """Copy the proxy URL to clipboard."""
         port = int(self.config_widget.get_port())
         proxy_url = f"http://127.0.0.1:{port}"
         clipboard = QApplication.clipboard()
         clipboard.setText(proxy_url)
         logger.info(f"Copied proxy URL to clipboard: {proxy_url}")
 
-        # Show a brief visual feedback
         self.copy_url_btn.setText("✓")
         try:
             self.copy_url_btn.setProperty("success", True)
             self.copy_url_btn.style().unpolish(self.copy_url_btn)
             self.copy_url_btn.style().polish(self.copy_url_btn)
         except Exception:
-            logger.debug("Failed to repolish copy_url_btn after success property", exc_info=True)
+            logger.debug(
+                "Failed to repolish copy_url_btn after success property", exc_info=True
+            )
 
-        # Reset button after 500ms using QTimer
         def reset_button():
             self.copy_url_btn.setText("⧉")
             try:
@@ -497,18 +427,17 @@ class MainWindow(QMainWindow):
                 self.copy_url_btn.style().unpolish(self.copy_url_btn)
                 self.copy_url_btn.style().polish(self.copy_url_btn)
             except Exception:
-                logger.debug("Failed to repolish copy_url_btn during reset", exc_info=True)
+                logger.debug(
+                    "Failed to repolish copy_url_btn during reset", exc_info=True
+                )
 
         QTimer.singleShot(500, reset_button)
 
     def _on_request_selected(self, request):
-        """Handle request selection."""
         self.request_details_widget.set_request(request)
 
     def _on_config_changed(self):
-        """Handle configuration changes."""
         logger.debug("Configuration changed")
-        # Update displayed URL label immediately (but do not restart server here)
         self.proxy_url_label.setText(
             f"http://127.0.0.1:{self.config_widget.get_port()}"
         )
@@ -521,13 +450,10 @@ class MainWindow(QMainWindow):
             logger.warning("Configuration is incomplete - missing API keys or models")
 
     def _on_config_saved(self):
-        """Handle configuration saved: restart server if needed and update cheatsheet."""
         try:
-            # Update displayed URL label to saved port
             new_port = int(self.config_widget.get_port())
             self.proxy_url_label.setText(f"http://127.0.0.1:{new_port}")
 
-            # Restart proxy only on save if port changed
             if self.async_runner and self.async_runner.proxy_server:
                 try:
                     is_running = self.async_runner.proxy_server.is_running
@@ -543,10 +469,8 @@ class MainWindow(QMainWindow):
                         "Error while attempting to restart proxy after save"
                     )
 
-            # Update Client Settings (Cheatsheet) text to new port and save, preserving user content
             try:
                 if self.cheatsheet_widget:
-                    # Determine old port: if proxy is running, use current_port; otherwise assume previous config's port
                     old_port = None
                     try:
                         if self.async_runner and self.async_runner.proxy_server:
@@ -554,7 +478,6 @@ class MainWindow(QMainWindow):
                     except Exception:
                         old_port = None
                     if old_port is None:
-                        # Fallback: if we couldn't detect old port from running server, use new_port to no-op replacements
                         old_port = new_port
                     self.cheatsheet_widget.update_port_and_save(old_port, new_port)
             except Exception:
@@ -563,7 +486,6 @@ class MainWindow(QMainWindow):
             logger.exception("Error handling config_saved event")
 
     def closeEvent(self, event):
-        """Handle window close event."""
         logger.info("Application closing")
 
         if self.async_runner and self.async_runner.isRunning():

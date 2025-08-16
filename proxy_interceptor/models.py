@@ -4,8 +4,6 @@ from datetime import datetime
 
 @dataclass
 class HttpRequest:
-    """Represents an HTTP request."""
-
     timestamp: datetime
     method: str
     url: str
@@ -15,18 +13,14 @@ class HttpRequest:
 
 @dataclass
 class HttpResponse:
-    """Represents an HTTP response."""
-
     status_code: int
     status_text: str
     headers: dict[str, str]
-    body: str  # Parsed/formatted response body (for display)
-    raw_body: str = ""  # Raw response body (unprocessed)
+    body: str
+    raw_body: str = ""
 
 
 @dataclass
 class InterceptedRequest:
-    """Represents a complete request/response pair."""
-
     request: HttpRequest
     response: HttpResponse

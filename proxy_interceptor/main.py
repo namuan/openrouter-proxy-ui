@@ -6,7 +6,6 @@ from PyQt6.QtWidgets import QApplication
 
 from .main_window import MainWindow
 
-# Configure logging
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -20,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    """Main entry point for the application."""
     logger.info("Starting Proxy Interceptor application")
 
     try:
