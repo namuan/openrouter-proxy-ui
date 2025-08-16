@@ -245,4 +245,3 @@ class TestMainWindow:
 
         # Wait and check
         qtbot.wait(200)
-        

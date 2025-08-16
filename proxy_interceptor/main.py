@@ -3,6 +3,7 @@ import logging
 import re
 import sys
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import ClassVar
 
 from PyQt6.QtCore import Qt
@@ -62,8 +63,13 @@ def setup_logging():
     stream_handler.setLevel(level)
     stream_handler.setFormatter(formatter)
 
+    # Use user's home directory for log files in app bundles
+    log_dir = Path.home() / "Library" / "Logs" / "OpenRouterProxy"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "proxy_interceptor.log"
+
     file_handler = RotatingFileHandler(
-        "proxy_interceptor.log", maxBytes=5 * 1024 * 1024, backupCount=3
+        str(log_file), maxBytes=5 * 1024 * 1024, backupCount=3
     )
     file_handler.setLevel(level)
     file_handler.setFormatter(formatter)
