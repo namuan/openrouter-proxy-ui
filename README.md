@@ -1,12 +1,16 @@
-# OpenRouter Proxy Interceptor
+<p style="text-align: center">
+  <img src="https://github.com/namuan/openrouter-proxy-ui/raw/main/assets/or-proxy.png" width="128px" alt=""/>
+</p>
 
-A desktop GUI application that creates a local HTTP proxy server to intercept, inspect, and forward OpenRouter chat-completion requests.  
-It transparently rotates between multiple API keys and free models, retries on failures, and logs every request/response pair.
+A desktop GUI application that creates a local HTTP proxy server to intercept, inspect, and forward OpenRouter
+chat-completion requests.  
+It transparently rotates between multiple API keys and free models, retries on failures, and logs every request/response
+pair.
 
 ![](docs/screenshot.png)
 
 | ⚡ Quick start | 1. Install → 2. Paste OpenRouter keys → 3. Pick free models → 4. Click “Start Proxy” |
-|---------------|----------------------------------------------------------------------------------------|
+|---------------|--------------------------------------------------------------------------------------|
 
 ## Features
 
