@@ -17,6 +17,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from .model_selection_widget import ModelSelectionWidget
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,19 +87,9 @@ class ConfigWidget(QWidget):
         layout.addWidget(api_keys_group)
 
         # API Models section
-        api_models_group = QGroupBox("OpenRouter API Models (One per line)")
-        api_models_layout = QVBoxLayout(api_models_group)
-        api_models_layout.setSpacing(8)
-
-        self.api_models_text = QTextEdit()
-        self.api_models_text.setPlaceholderText(
-            "qwen/qwen3-coder:free\nopenai/gpt-oss-20b:free\nanthropic/claude-3-haiku:beta"
-        )
-        self.api_models_text.setMaximumHeight(100)
-        self.api_models_text.textChanged.connect(self._on_config_changed)
-        api_models_layout.addWidget(self.api_models_text)
-
-        layout.addWidget(api_models_group)
+        self.model_selection_widget = ModelSelectionWidget()
+        self.model_selection_widget.models_selected.connect(self._on_models_selected)
+        layout.addWidget(self.model_selection_widget)
 
         # Port section
         port_group = QGroupBox("Proxy Server Port")
@@ -137,6 +129,11 @@ class ConfigWidget(QWidget):
         self._parse_config()
         self.config_changed.emit()
 
+    def _on_models_selected(self, models):
+        """Handle model selection changes."""
+        self.api_models = models
+        self.config_changed.emit()
+
     def _parse_config(self):
         """Parse configuration from UI elements."""
         # Parse API keys - handle masked keys
@@ -160,12 +157,6 @@ class ConfigWidget(QWidget):
                 parsed_keys.append(input_key)
 
         self.api_keys = parsed_keys
-
-        # Parse API models
-        api_models_text = self.api_models_text.toPlainText().strip()
-        self.api_models = [
-            model.strip() for model in api_models_text.split("\n") if model.strip()
-        ]
 
         # Parse port
         self.port = int(self.port_spin.value())
@@ -261,14 +252,16 @@ class ConfigWidget(QWidget):
         """Update UI elements with current configuration."""
         # Temporarily disconnect signals to prevent _parse_config from being called
         self.api_keys_text.textChanged.disconnect()
-        self.api_models_text.textChanged.disconnect()
         with contextlib.suppress(Exception):
             self.port_spin.blockSignals(True)
 
         # Update the UI with current configuration - mask API keys for security
         masked_keys = [self._mask_api_key(key) for key in self.api_keys]
         self.api_keys_text.setPlainText("\n".join(masked_keys))
-        self.api_models_text.setPlainText("\n".join(self.api_models))
+        
+        # Update model selection widget
+        self.model_selection_widget.set_selected_models(self.api_models)
+        
         try:
             self.port_spin.setValue(int(self.port))
         finally:
@@ -277,7 +270,6 @@ class ConfigWidget(QWidget):
 
         # Reconnect the signals
         self.api_keys_text.textChanged.connect(self._on_config_changed)
-        self.api_models_text.textChanged.connect(self._on_config_changed)
 
     def get_api_keys(self) -> list[str]:
         """Get the configured API keys."""
