@@ -62,6 +62,25 @@ QPushButton#stopProxyBtn:hover {
     background-color: #d33b2e;
 }
 
+/* Auto-follow button styling */
+QPushButton#autoFollowBtn {
+    background-color: #0f9d58;
+    min-width: 140px;
+    font-weight: 600;
+}
+
+QPushButton#autoFollowBtn:hover {
+    background-color: #0d8a4d;
+}
+
+QPushButton#autoFollowBtn[autoFollowEnabled="false"] {
+    background-color: #ea4335;
+}
+
+QPushButton#autoFollowBtn[autoFollowEnabled="false"]:hover {
+    background-color: #d33b2e;
+}
+
 QPushButton:disabled {
     background-color: #dadce0;
     color: #9aa0a6;

@@ -12,10 +12,13 @@ logger = logging.getLogger(__name__)
 
 class RequestListWidget(QWidget):
     request_selected = pyqtSignal(InterceptedRequest)
+    auto_follow_changed = pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
         self.requests: list[InterceptedRequest] = []
+        self._auto_follow_enabled = True  # Auto-follow is enabled by default
+        self._user_manually_selected = False  # Track if user manually selected a request
         logger.debug("RequestListWidget initialized")
         self._setup_ui()
         self._pending: list[InterceptedRequest] = []
@@ -35,7 +38,8 @@ class RequestListWidget(QWidget):
 
         self.request_list = QListWidget()
         self.request_list.setAlternatingRowColors(True)
-        self.request_list.itemClicked.connect(self._on_request_selected)
+        self.request_list.itemClicked.connect(self._on_request_clicked)
+        self.request_list.currentItemChanged.connect(self._on_current_item_changed)
         layout.addWidget(self.request_list)
         logger.debug("RequestListWidget UI setup complete")
 
@@ -53,6 +57,10 @@ class RequestListWidget(QWidget):
             self._flush_timer.start(100)
         except Exception:
             self._flush_pending()
+        
+        # Auto-select the new request if auto-follow is enabled
+        if self._auto_follow_enabled:
+            self._auto_select_latest_request()
 
     def _update_list(self):
         logger.debug(f"Updating list widget with {len(self.requests)} requests")
@@ -197,21 +205,69 @@ class RequestListWidget(QWidget):
             logger.info(
                 f"Batched UI update: appended {len(pending)} items in {elapsed_ms:.1f} ms"
             )
+        
+        # Auto-select the latest request if auto-follow is enabled
+        if self._auto_follow_enabled and pending:
+            self._auto_select_latest_request()
 
-    def _on_request_selected(self, item: QListWidgetItem):
-        request = item.data(Qt.ItemDataRole.UserRole)
-        parsed_url = urlparse(request.request.url)
-        path = parsed_url.path if parsed_url.path else "/"
+    def _on_request_clicked(self, item: QListWidgetItem):
+        """Handle manual clicks on request items."""
+        if item and self._auto_follow_enabled:
+            # User manually clicked, disable auto-follow
+            self._user_manually_selected = True
+            self.set_auto_follow_enabled(False)
+            logger.info("Auto-follow disabled due to manual click")
+    
+    def _on_current_item_changed(self, current: QListWidgetItem, previous: QListWidgetItem):
+        """Handle when the current item changes (both manual and automatic)."""
+        if current:
+            request = current.data(Qt.ItemDataRole.UserRole)
+            if request:
+                parsed_url = urlparse(request.request.url)
+                path = parsed_url.path if parsed_url.path else "/"
 
-        model_name = "unknown"
-        try:
-            if request.request.body:
-                body_data = json.loads(request.request.body)
-                model_name = body_data.get("model", "unknown")
-        except (json.JSONDecodeError, AttributeError):
-            pass
+                model_name = "unknown"
+                try:
+                    if request.request.body:
+                        body_data = json.loads(request.request.body)
+                        model_name = body_data.get("model", "unknown")
+                except (json.JSONDecodeError, AttributeError):
+                    pass
 
-        logger.info(
-            f"Request selected from list: {request.request.method} {path} - {model_name}"
-        )
-        self.request_selected.emit(request)
+                logger.info(
+                    f"Request selected from list: {request.request.method} {path} - {model_name}"
+                )
+                self.request_selected.emit(request)
+    
+    def set_auto_follow_enabled(self, enabled: bool):
+        """Enable or disable auto-follow for new requests."""
+        if self._auto_follow_enabled != enabled:
+            self._auto_follow_enabled = enabled
+            self.auto_follow_changed.emit(enabled)
+            logger.info(f"Auto-follow {'enabled' if enabled else 'disabled'}")
+            
+            # Reset manual selection flag when re-enabling auto-follow
+            if enabled:
+                self._user_manually_selected = False
+    
+    def is_auto_follow_enabled(self) -> bool:
+        """Check if auto-follow is currently enabled."""
+        return self._auto_follow_enabled
+    
+    def _auto_select_latest_request(self):
+        """Automatically select the latest request in the list."""
+        if self.request_list.count() > 0:
+            # Get the last item (most recent request)
+            last_item = self.request_list.item(self.request_list.count() - 1)
+            if last_item:
+                # Mark this as an automatic selection to avoid disabling auto-follow
+                self._user_manually_selected = False
+                
+                # Select the item in the list
+                self.request_list.setCurrentItem(last_item)
+                
+                # Directly emit the selection signal and update details
+                request = last_item.data(Qt.ItemDataRole.UserRole)
+                if request:
+                    logger.debug(f"Auto-selected latest request: {request.request.method} {request.request.url}")
+                    self.request_selected.emit(request)

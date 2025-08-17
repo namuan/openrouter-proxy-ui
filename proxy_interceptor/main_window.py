@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 
-from PyQt6.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, Qt, QSettings, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (
     QApplication,
@@ -284,6 +284,12 @@ class MainWindow(QMainWindow):
         self.clear_btn.clicked.connect(self._clear_requests)
         control_layout.addWidget(self.clear_btn)
 
+        self.auto_follow_btn = QPushButton("🔄 Auto-Follow: ON")
+        self.auto_follow_btn.setObjectName("autoFollowBtn")
+        self.auto_follow_btn.setToolTip("Toggle automatic following of new requests")
+        self.auto_follow_btn.clicked.connect(self._toggle_auto_follow)
+        control_layout.addWidget(self.auto_follow_btn)
+
         self.proxy_url_label = QLabel(
             f"http://127.0.0.1:{self.config_widget.get_port()}"
         )
@@ -319,6 +325,13 @@ class MainWindow(QMainWindow):
 
         self.request_list_widget = RequestListWidget()
         self.request_list_widget.request_selected.connect(self._on_request_selected)
+        self.request_list_widget.auto_follow_changed.connect(self._on_auto_follow_changed)
+        
+        # Load auto-follow preference from settings
+        settings = QSettings()
+        auto_follow_enabled = settings.value("auto_follow_enabled", True, type=bool)
+        self.request_list_widget.set_auto_follow_enabled(auto_follow_enabled)
+        
         splitter.addWidget(self.request_list_widget)
 
         self.request_details_widget = RequestDetailsWidget()
@@ -520,6 +533,30 @@ class MainWindow(QMainWindow):
 
     def _on_request_selected(self, request):
         self.request_details_widget.set_request(request)
+    
+    def _toggle_auto_follow(self):
+        """Toggle the auto-follow feature on/off."""
+        current_state = self.request_list_widget.is_auto_follow_enabled()
+        new_state = not current_state
+        self.request_list_widget.set_auto_follow_enabled(new_state)
+        logger.info(f"Auto-follow toggled to: {'ON' if new_state else 'OFF'}")
+    
+    def _on_auto_follow_changed(self, enabled: bool):
+        """Update the UI when auto-follow state changes."""
+        if enabled:
+            self.auto_follow_btn.setText("🔄 Auto-Follow: ON")
+            self.auto_follow_btn.setProperty("autoFollowEnabled", True)
+        else:
+            self.auto_follow_btn.setText("⏸️ Auto-Follow: OFF")
+            self.auto_follow_btn.setProperty("autoFollowEnabled", False)
+        
+        # Save preference to settings
+        settings = QSettings()
+        settings.setValue("auto_follow_enabled", enabled)
+        
+        # Refresh button styling
+        self.auto_follow_btn.style().unpolish(self.auto_follow_btn)
+        self.auto_follow_btn.style().polish(self.auto_follow_btn)
 
     def _on_config_changed(self):
         logger.debug("Configuration changed")
