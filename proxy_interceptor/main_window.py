@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import logging
 
-from PyQt6.QtCore import QObject, Qt, QSettings, QThread, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QSettings, Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter
 from PyQt6.QtWidgets import (
     QApplication,
@@ -325,13 +325,15 @@ class MainWindow(QMainWindow):
 
         self.request_list_widget = RequestListWidget()
         self.request_list_widget.request_selected.connect(self._on_request_selected)
-        self.request_list_widget.auto_follow_changed.connect(self._on_auto_follow_changed)
-        
+        self.request_list_widget.auto_follow_changed.connect(
+            self._on_auto_follow_changed
+        )
+
         # Load auto-follow preference from settings
         settings = QSettings()
         auto_follow_enabled = settings.value("auto_follow_enabled", True, type=bool)
         self.request_list_widget.set_auto_follow_enabled(auto_follow_enabled)
-        
+
         splitter.addWidget(self.request_list_widget)
 
         self.request_details_widget = RequestDetailsWidget()
@@ -479,6 +481,19 @@ class MainWindow(QMainWindow):
         logger.info("New intercepted request received; updating UI list")
         self.request_list_widget.add_request(intercepted)
 
+        # Update model tracking in configuration tab
+        try:
+            all_requests = self.request_list_widget.get_all_requests()
+            self.config_widget.update_model_tracking(all_requests)
+
+            # Update current active model if available
+            if intercepted.get_successful_model():
+                self.config_widget.set_current_active_model(
+                    intercepted.get_successful_model()
+                )
+        except Exception:
+            logger.exception("Failed to update model tracking")
+
     def _on_streaming_update(self, intercepted):
         logger.debug("Streaming update received; updating UI")
         self.request_list_widget.update_streaming_request(intercepted)
@@ -490,12 +505,26 @@ class MainWindow(QMainWindow):
         ):
             self.request_details_widget.update_streaming_content(intercepted)
 
+        # Update model tracking for streaming updates
+        try:
+            all_requests = self.request_list_widget.get_all_requests()
+            self.config_widget.update_model_tracking(all_requests)
+        except Exception:
+            logger.exception("Failed to update model tracking on streaming update")
+
     def _clear_requests(self):
         logger.info("Clear button clicked")
         if self.async_runner:
             self.async_runner.clear_requests()
         self.request_list_widget.set_requests([])
         self.request_details_widget.clear()
+
+        # Clear model tracking history
+        try:
+            self.config_widget.clear_model_tracking_history()
+        except Exception:
+            logger.exception("Failed to clear model tracking history")
+
         self.show_status("Cleared all requests", level="success", duration=2500)
 
     def _copy_proxy_url(self):
@@ -533,14 +562,14 @@ class MainWindow(QMainWindow):
 
     def _on_request_selected(self, request):
         self.request_details_widget.set_request(request)
-    
+
     def _toggle_auto_follow(self):
         """Toggle the auto-follow feature on/off."""
         current_state = self.request_list_widget.is_auto_follow_enabled()
         new_state = not current_state
         self.request_list_widget.set_auto_follow_enabled(new_state)
         logger.info(f"Auto-follow toggled to: {'ON' if new_state else 'OFF'}")
-    
+
     def _on_auto_follow_changed(self, enabled: bool):
         """Update the UI when auto-follow state changes."""
         if enabled:
@@ -549,11 +578,11 @@ class MainWindow(QMainWindow):
         else:
             self.auto_follow_btn.setText("⏸️ Auto-Follow: OFF")
             self.auto_follow_btn.setProperty("autoFollowEnabled", False)
-        
+
         # Save preference to settings
         settings = QSettings()
         settings.setValue("auto_follow_enabled", enabled)
-        
+
         # Refresh button styling
         self.auto_follow_btn.style().unpolish(self.auto_follow_btn)
         self.auto_follow_btn.style().polish(self.auto_follow_btn)

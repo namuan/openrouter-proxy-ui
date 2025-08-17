@@ -67,22 +67,12 @@ class ModelSelectionWidget(QWidget):
         left_layout.addWidget(available_group)
         main_layout.addLayout(left_layout)
 
-        right_layout = QVBoxLayout()
-
-        selected_group = QGroupBox("Selected Models (Drag to Reorder)")
-        selected_layout = QVBoxLayout(selected_group)
-        selected_layout.setSpacing(8)
-
+        # Hide the right column since we're moving selected models to ModelTrackingWidget
+        # Keep the selected_models_list for internal functionality but don't display it
         self.selected_models_list = ReorderableListWidget()
         self.selected_models_list.itemChanged.connect(self._on_selected_list_changed)
         self.selected_models_list.model().rowsMoved.connect(self._on_models_reordered)
-        selected_layout.addWidget(self.selected_models_list)
-
-        right_layout.addWidget(selected_group)
-        main_layout.addLayout(right_layout)
-
-        main_layout.setStretch(0, 1)
-        main_layout.setStretch(1, 1)
+        self.selected_models_list.hide()  # Hide the widget
 
         self._refresh_models()
 

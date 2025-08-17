@@ -20,13 +20,10 @@ Use this checklist to track architectural and code-level improvements. Items are
    - [x] Add retry with backoff for uvicorn startup failures (port in use, permission)
    - [x] Confirm thread-safety of signals and data (only emit from AsyncRunner thread via pyqtSignal)
 
-5. [x] Proxy server resilience and correctness
-   - [x] Add timeout, retry, and backoff policy for httpx client (429 and transient network errors)
-   - [x] Respect Retry-After headers for 429 responses
-   - [x] Make target_base_url configurable (environment + UI hidden/advanced)
-   - [x] Add health endpoint /healthz that checks upstream connectivity (optional ping)
-   - [x] Add readiness endpoint /ready that reflects uvicorn state and client init
-   - [x] Implement graceful shutdown sequence with deadlines
+5. [ ] Proxy server resilience and correctness
+   - [ ] Add timeout, retry, and backoff policy for httpx client (429 and transient network errors)
+   - [ ] Respect Retry-After headers for 429 responses
+   
 
 8. [X] UI/UX improvements for productivity
    - [X] Show streaming progress indicator and total tokens/latency metadata

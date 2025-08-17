@@ -12,7 +12,13 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from proxy_interceptor.models import HttpRequest, HttpResponse, InterceptedRequest
+from proxy_interceptor.models import (
+    HttpRequest,
+    HttpResponse,
+    InterceptedRequest,
+    ModelInvocation,
+    ModelProcessStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -245,9 +251,31 @@ class ProxyServer:
             last_error_detail = "All API models failed."
             num_models = len(self.config.openrouter_api_models)
 
+            # Track all model invocations for this request
+            model_invocations = []
+            primary_model = None
+            fallback_models_used = []
+
             for i in range(num_models):
                 model_index = (current_model_index + i) % num_models
                 model_name = self.config.openrouter_api_models[model_index]
+
+                # Create model invocation tracking
+                model_invocation = ModelInvocation(
+                    model_name=model_name,
+                    model_version=None,  # OpenRouter doesn't provide version info
+                    status=ModelProcessStatus.IN_PROGRESS,
+                    timestamp=datetime.now(),
+                    api_key_index=key_index,
+                    model_index=model_index,
+                    retry_count=i,
+                )
+                model_invocations.append(model_invocation)
+
+                if i == 0:
+                    primary_model = model_name
+                else:
+                    fallback_models_used.append(model_name)
 
                 request_data["model"] = model_name
 
@@ -286,6 +314,12 @@ class ProxyServer:
                                 f"Streaming success with API key index {key_index}, model '{model_name}' (index {model_index})"
                             )
 
+                            # Update model invocation status to success
+                            model_invocation.status = ModelProcessStatus.SUCCESS
+                            model_invocation.latency_ms = (
+                                datetime.now() - model_invocation.timestamp
+                            ).total_seconds() * 1000.0
+
                             http_response = HttpResponse(
                                 status_code=api_response.status_code,
                                 status_text=api_response.reason_phrase,
@@ -299,7 +333,11 @@ class ProxyServer:
 
                             if self.config.log_requests:
                                 intercepted = InterceptedRequest(
-                                    request=http_request, response=http_response
+                                    request=http_request,
+                                    response=http_response,
+                                    model_invocations=model_invocations.copy(),
+                                    primary_model=primary_model,
+                                    fallback_models_used=fallback_models_used.copy(),
                                 )
                                 self.intercepted_requests.append(intercepted)
                                 if self.on_intercept:
@@ -331,6 +369,14 @@ class ProxyServer:
                                 logger.debug("Failed to read error response body")
                             await api_response.aclose()
                             logger.warning(error_detail)
+
+                            # Update model invocation status to rate limited
+                            model_invocation.status = ModelProcessStatus.RATE_LIMITED
+                            model_invocation.error_message = error_detail
+                            model_invocation.latency_ms = (
+                                datetime.now() - model_invocation.timestamp
+                            ).total_seconds() * 1000.0
+
                             last_error_status = 429
                             last_error_detail = error_detail
                         else:
@@ -338,6 +384,14 @@ class ProxyServer:
                             error_detail = f"Error with API key index {key_index}, model '{model_name}' (index {model_index}): Status {api_response.status_code}, Response: {error_body.decode()}"
                             await api_response.aclose()
                             logger.error(error_detail)
+
+                            # Update model invocation status to failed
+                            model_invocation.status = ModelProcessStatus.FAILED
+                            model_invocation.error_message = error_detail
+                            model_invocation.latency_ms = (
+                                datetime.now() - model_invocation.timestamp
+                            ).total_seconds() * 1000.0
+
                             last_error_status = api_response.status_code
                             last_error_detail = error_detail
                             if i == num_models - 1:
@@ -354,6 +408,12 @@ class ProxyServer:
                             logger.info(
                                 f"Non-streaming success with API key index {key_index}, model '{model_name}' (index {model_index})"
                             )
+
+                            # Update model invocation status to success
+                            model_invocation.status = ModelProcessStatus.SUCCESS
+                            model_invocation.latency_ms = (
+                                datetime.now() - model_invocation.timestamp
+                            ).total_seconds() * 1000.0
 
                             raw_text = api_response.text
                             try:
@@ -406,12 +466,19 @@ class ProxyServer:
                                     "completion_tokens"
                                 )
                                 http_response.total_tokens = usage.get("total_tokens")
+
+                                # Update model invocation with token usage
+                                model_invocation.tokens_used = usage.get("total_tokens")
                             except Exception as e:
                                 logger.debug(f"Error extracting token usage: {e}")
 
                             if self.config.log_requests:
                                 intercepted = InterceptedRequest(
-                                    request=http_request, response=http_response
+                                    request=http_request,
+                                    response=http_response,
+                                    model_invocations=model_invocations.copy(),
+                                    primary_model=primary_model,
+                                    fallback_models_used=fallback_models_used.copy(),
                                 )
                                 self.intercepted_requests.append(intercepted)
                                 if self.on_intercept:
@@ -432,11 +499,27 @@ class ProxyServer:
                             with contextlib.suppress(Exception):
                                 error_detail += f" Response: {api_response.text}"
                             logger.warning(error_detail)
+
+                            # Update model invocation status to rate limited
+                            model_invocation.status = ModelProcessStatus.RATE_LIMITED
+                            model_invocation.error_message = error_detail
+                            model_invocation.latency_ms = (
+                                datetime.now() - model_invocation.timestamp
+                            ).total_seconds() * 1000.0
+
                             last_error_status = 429
                             last_error_detail = error_detail
                         else:
                             error_detail = f"Error with API key index {key_index}, model '{model_name}' (index {model_index}): Status {api_response.status_code}, Response: {api_response.text}"
                             logger.error(error_detail)
+
+                            # Update model invocation status to failed
+                            model_invocation.status = ModelProcessStatus.FAILED
+                            model_invocation.error_message = error_detail
+                            model_invocation.latency_ms = (
+                                datetime.now() - model_invocation.timestamp
+                            ).total_seconds() * 1000.0
+
                             last_error_status = api_response.status_code
                             last_error_detail = error_detail
                             if i == num_models - 1:
@@ -448,6 +531,14 @@ class ProxyServer:
                 except httpx.RequestError as e:
                     error_detail = f"HTTPX Request Error with API key index {key_index}, model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
                     logger.exception(error_detail)
+
+                    # Update model invocation status to failed
+                    model_invocation.status = ModelProcessStatus.FAILED
+                    model_invocation.error_message = error_detail
+                    model_invocation.latency_ms = (
+                        datetime.now() - model_invocation.timestamp
+                    ).total_seconds() * 1000.0
+
                     last_error_status = 503
                     last_error_detail = error_detail
                     if i == num_models - 1:
@@ -458,6 +549,14 @@ class ProxyServer:
                 except Exception as e:
                     error_detail = f"Unexpected error processing request with API key index {key_index}, model '{model_name}' (index {model_index}): {e.__class__.__name__} - {e}"
                     logger.exception(error_detail)
+
+                    # Update model invocation status to failed
+                    model_invocation.status = ModelProcessStatus.FAILED
+                    model_invocation.error_message = error_detail
+                    model_invocation.latency_ms = (
+                        datetime.now() - model_invocation.timestamp
+                    ).total_seconds() * 1000.0
+
                     last_error_status = 500
                     last_error_detail = error_detail
                     if i == num_models - 1:

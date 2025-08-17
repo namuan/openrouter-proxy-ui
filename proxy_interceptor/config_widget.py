@@ -7,7 +7,7 @@ import socket
 from pathlib import Path
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIntValidator
 from PyQt6.QtWidgets import (
     QGroupBox,
@@ -15,18 +15,19 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSplitter,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from proxy_interceptor.layout_config import (
-    BUTTON_SPACING,
     INNER_SPACING,
     PANEL_MARGINS,
     PANEL_SPACING,
 )
 from proxy_interceptor.model_selection_widget import ModelSelectionWidget
+from proxy_interceptor.model_tracking_widget import ModelTrackingWidget
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +113,11 @@ class ConfigWidget(QWidget):
     def _setup_ui(self):
         logger.debug("Setting up ConfigWidget UI")
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(*PANEL_MARGINS)
-        layout.setSpacing(PANEL_SPACING)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(*PANEL_MARGINS)
+        main_layout.setSpacing(PANEL_SPACING)
 
+        # API Keys section at the top
         api_keys_group = QGroupBox("OpenRouter API Keys (One per line)")
         api_keys_layout = QVBoxLayout(api_keys_group)
         api_keys_layout.setSpacing(INNER_SPACING)
@@ -126,11 +128,47 @@ class ConfigWidget(QWidget):
         self.api_keys_text.textChanged.connect(self._on_config_changed)
         api_keys_layout.addWidget(self.api_keys_text)
 
-        layout.addWidget(api_keys_group)
+        main_layout.addWidget(api_keys_group)
 
+        # Create a splitter for two-column layout
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        # Left column: Available models (from ModelSelectionWidget)
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create a custom model selection widget that only shows available models
         self.model_selection_widget = ModelSelectionWidget()
         self.model_selection_widget.models_selected.connect(self._on_models_selected)
-        layout.addWidget(self.model_selection_widget)
+
+        # Extract just the left part (available models) from the model selection widget
+        # We'll modify this to show only the available models section
+        left_layout.addWidget(self.model_selection_widget)
+
+        splitter.addWidget(left_widget)
+
+        # Right column: Selected models, current active model, and tracking
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Model tracking widget (includes selected models display, current active model, history, stats)
+        self.model_tracking_widget = ModelTrackingWidget()
+        self.model_tracking_widget.models_reordered.connect(self._on_models_reordered)
+        self.model_tracking_widget.model_removed.connect(self._on_model_removed)
+        right_layout.addWidget(self.model_tracking_widget)
+
+        splitter.addWidget(right_widget)
+
+        # Set equal sizes for both columns
+        splitter.setSizes([400, 600])  # Left: 400px, Right: 600px
+
+        main_layout.addWidget(splitter)
+
+        # Port and save configuration at the bottom
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(PANEL_SPACING)
 
         port_group = QGroupBox("Proxy Server Port")
         port_layout = QHBoxLayout(port_group)
@@ -146,19 +184,15 @@ class ConfigWidget(QWidget):
         port_layout.addWidget(self.port_input)
         port_layout.addStretch()
 
-        layout.addWidget(port_group)
-
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(BUTTON_SPACING)
+        bottom_layout.addWidget(port_group)
 
         self.save_btn = QPushButton("Save Configuration")
         self.save_btn.clicked.connect(self._save_config)
-        button_layout.addWidget(self.save_btn)
+        bottom_layout.addWidget(self.save_btn)
 
-        button_layout.addStretch()
-        layout.addLayout(button_layout)
+        bottom_layout.addStretch()
 
-        layout.addStretch()
+        main_layout.addLayout(bottom_layout)
 
         self._load_config()
 
@@ -170,7 +204,44 @@ class ConfigWidget(QWidget):
 
     def _on_models_selected(self, models):
         self.api_models = models
+        # Update the model tracking widget with selected models
+        try:
+            self.model_tracking_widget.set_selected_models(models)
+        except Exception:
+            logger.exception("Failed to update selected models in tracking widget")
         self.config_changed.emit()
+
+    def _on_models_reordered(self, models):
+        """Handle when models are reordered in the tracking widget."""
+        logger.info(f"Models reordered in config: {models}")
+        self.api_models = models
+        # Update the model selection widget with the new order
+        try:
+            self.model_selection_widget.set_selected_models(models)
+        except Exception:
+            logger.exception("Failed to update model selection widget after reordering")
+        self.config_changed.emit()
+
+    def _on_model_removed(self, model_name):
+        """Handle when a model is automatically removed due to failures."""
+        logger.warning(
+            f"Model '{model_name}' automatically removed from configuration due to excessive failures"
+        )
+        if model_name in self.api_models:
+            self.api_models.remove(model_name)
+            # Update the model selection widget
+            try:
+                self.model_selection_widget.set_selected_models(self.api_models)
+            except Exception:
+                logger.exception(
+                    "Failed to update model selection widget after removal"
+                )
+            self.config_changed.emit()
+            # Show status message to user
+            self.status.emit(
+                f"Model '{model_name}' removed due to excessive failures (>5)",
+                "warning",
+            )
 
     def _parse_config(self):
         api_keys_text = self.api_keys_text.toPlainText().strip()
@@ -315,6 +386,14 @@ class ConfigWidget(QWidget):
 
         self.model_selection_widget.set_selected_models(self.api_models)
 
+        # Update the model tracking widget with selected models
+        try:
+            self.model_tracking_widget.set_selected_models(self.api_models)
+        except Exception:
+            logger.exception(
+                "Failed to update selected models in tracking widget during UI update"
+            )
+
         try:
             self.port_input.setText(str(int(self.port)))
         finally:
@@ -332,3 +411,24 @@ class ConfigWidget(QWidget):
 
     def has_valid_config(self) -> bool:
         return len(self.api_keys) > 0 and len(self.api_models) > 0
+
+    def update_model_tracking(self, intercepted_requests):
+        """Update the model tracking widget with new intercepted requests."""
+        try:
+            self.model_tracking_widget.update_requests(intercepted_requests)
+        except Exception:
+            logger.exception("Failed to update model tracking")
+
+    def set_current_active_model(self, model_name: str):
+        """Set the currently active model in the tracking widget."""
+        try:
+            self.model_tracking_widget.set_current_model(model_name)
+        except Exception:
+            logger.exception("Failed to set current model")
+
+    def clear_model_tracking_history(self):
+        """Clear the model tracking history."""
+        try:
+            self.model_tracking_widget.clear_history()
+        except Exception:
+            logger.exception("Failed to clear model tracking history")
