@@ -164,7 +164,8 @@ class ConfigWidget(QWidget):
         # Set equal sizes for both columns
         splitter.setSizes([400, 600])  # Left: 400px, Right: 600px
 
-        main_layout.addWidget(splitter)
+        # Add splitter with stretch factor to take up most of the space
+        main_layout.addWidget(splitter, 1)  # Stretch factor of 1
 
         # Port and save configuration at the bottom
         bottom_layout = QHBoxLayout()
@@ -192,7 +193,8 @@ class ConfigWidget(QWidget):
 
         bottom_layout.addStretch()
 
-        main_layout.addLayout(bottom_layout)
+        # Add bottom layout without stretch factor to keep it compact
+        main_layout.addLayout(bottom_layout, 0)  # No stretch factor
 
         self._load_config()
 
