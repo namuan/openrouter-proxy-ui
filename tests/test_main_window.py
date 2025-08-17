@@ -1,3 +1,4 @@
+# tests/test_main_window.py
 import asyncio
 import logging
 
@@ -12,8 +13,8 @@ logger = logging.getLogger(__name__)
 class TestMainWindow:
     """Test cases for the MainWindow class."""
 
-    # ruff: noqa: C901
-    def test_e2e(self, qtbot):
+    def _setup_window_and_verify_initial_state(self, qtbot):
+        """Create window, show it, and verify basic properties."""
         # Create the main window
         window = MainWindow()
 
@@ -27,6 +28,7 @@ class TestMainWindow:
         # Verify the window is visible
         assert window.isVisible()
 
+        # Wait for proxy to start automatically
         qtbot.waitUntil(
             lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=5000
         )
@@ -38,7 +40,11 @@ class TestMainWindow:
         assert window.minimumSize().width() > 0
         assert window.minimumSize().height() > 0
 
-        # Make HTTP request similar to example-request.sh
+        return window
+
+    def _make_test_request(self):
+        """Create an async HTTP request to the proxy server."""
+
         async def make_request():
             async with httpx.AsyncClient() as client:
                 try:
@@ -60,14 +66,19 @@ class TestMainWindow:
                     print(f"Request failed: {e}")
                     return None
 
-        # Execute the async request
+        return make_request
+
+    def _execute_async_request(self, async_request_func):
+        """Execute an async request using a new event loop."""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(make_request())
+            loop.run_until_complete(async_request_func())
         finally:
             loop.close()
 
+    def _verify_request_in_list(self, window, qtbot):
+        """Wait for and verify that the request appears in the list."""
         # Wait for the request to appear in the requests list
         qtbot.waitUntil(
             lambda: len(
@@ -87,6 +98,10 @@ class TestMainWindow:
         request_item = items[0]
         assert "POST /v1/chat/completions" in request_item.text()
 
+        return request_item
+
+    def _select_request_and_verify_details(self, window, qtbot, request_item):
+        """Select a request item and verify its details are populated."""
         list_widget = window.request_list_widget.request_list
         rect = list_widget.visualItemRect(request_item)
         qtbot.mouseClick(
@@ -117,6 +132,8 @@ class TestMainWindow:
         assert resp_headers_text != ""
         assert resp_body_parsed_text != ""
 
+    def _verify_response_tabs(self, window):
+        """Test switching between Parsed and Raw response tabs."""
         # Switch to Raw tab and verify content
         window.request_details_widget.response_body_tabs.setCurrentIndex(1)
         resp_body_raw_text = (
@@ -128,21 +145,27 @@ class TestMainWindow:
         window.request_details_widget.response_body_tabs.setCurrentIndex(0)
         assert window.request_details_widget.response_body_parsed.toPlainText() != ""
 
-        # Press Toggle Proxy Button to Stop Proxy
-        # -> Check Button Text becomes "Start Proxy" and URL disabled/cleared
+    def _toggle_proxy_and_verify_state(self, window, qtbot, expected_final_state):
+        """Toggle proxy state and verify the button text and URL label."""
         if window.toggle_proxy_btn.text() == "Stop Proxy":
             qtbot.mouseClick(window.toggle_proxy_btn, Qt.MouseButton.LeftButton)
             qtbot.waitUntil(
                 lambda: window.toggle_proxy_btn.text() == "Start Proxy", timeout=5000
             )
-            # proxy_url_label should be disabled when stopped or at least not reporting running URL
+            # proxy_url_label should be disabled when stopped
             assert (
                 not window.proxy_url_label.isEnabled()
                 or "127.0.0.1" not in window.proxy_url_label.text()
             )
 
-        # Press "Clear All Requests"
-        # Find a button with "Clear" in the text (handles variations like "Clear All Requests")
+        if expected_final_state == "Stop Proxy":
+            qtbot.mouseClick(window.toggle_proxy_btn, Qt.MouseButton.LeftButton)
+            qtbot.waitUntil(
+                lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=10000
+            )
+
+    def _find_clear_button(self, window):
+        """Find the clear button in the main window."""
         clear_btn = None
         for btn in window.findChildren(type(window.toggle_proxy_btn)):
             try:
@@ -154,14 +177,22 @@ class TestMainWindow:
                 continue
 
         assert clear_btn is not None, "Clear button not found in main window"
+        return clear_btn
+
+    def _clear_requests_and_verify(self, window, qtbot):
+        """Clear all requests and verify the list is empty."""
+        clear_btn = self._find_clear_button(window)
         qtbot.mouseClick(clear_btn, Qt.MouseButton.LeftButton)
+
         # Wait and check that there are no requests in list_widget
+        list_widget = window.request_list_widget.request_list
         qtbot.waitUntil(lambda: list_widget.count() == 0, timeout=3000)
         assert list_widget.count() == 0
 
-        # Switch to "Configuration" Tab
-        # Find the main tab widget and set to Configuration tab by name
+    def _find_configuration_tab(self, window):
+        """Find and switch to the Configuration tab."""
         tab_widget = None
+        config_tab_index = None
         from PyQt6.QtWidgets import QTabWidget
 
         for tw in window.findChildren(QTabWidget):
@@ -181,33 +212,43 @@ class TestMainWindow:
         assert tab_widget is not None, (
             "Main tab widget with 'Configuration' tab not found"
         )
+
+        return tab_widget, config_tab_index
+
+    def _switch_to_configuration_tab(self, window, qtbot):
+        """Switch to the Configuration tab and verify basic content."""
+        tab_widget, config_tab_index = self._find_configuration_tab(window)
         tab_widget.setCurrentIndex(config_tab_index)
         qtbot.waitUntil(
             lambda: tab_widget.currentIndex() == config_tab_index, timeout=2000
         )
 
-        # -> Verify that there is data in OpenRouter API Keys input widget
+        # Verify that there is data in OpenRouter API Keys input widget
         cfg = window.config_widget
         api_keys_text = cfg.api_keys_text.toPlainText()
-        # It's acceptable for api_keys_text to be empty in some environments, but the test expects some value.
-        # Assert that the widget exists and returns a string (possibly empty) and that the internal model list exists.
         assert isinstance(api_keys_text, str)
-        # -> Verify that there are items in OpenRouter free models
+
+        # Verify that there are items in OpenRouter free models
         free_models = cfg.model_selection_widget.free_models
         assert isinstance(free_models, list)
-        # it's helpful if there are at least zero items; prefer >0 but accept >=0 to be robust
         assert free_models is not None
-        # -> Verify that there is server port
+
+        return cfg
+
+    def _test_port_change(self, window, qtbot, cfg):
+        """Test changing the server port and verifying the changes."""
+        # Get original port
         original_port_text = cfg.port_input.text()
         assert original_port_text != ""
 
-        # -> Update server port (use a different port)
+        # Update server port (use a different port)
         try:
             new_port = str(int(original_port_text) + 1)
         except Exception:
             new_port = "8081"
+
+        # Change port and save configuration
         cfg.port_input.setText(new_port)
-        # Save configuration so UI / main window will pick it up
         if hasattr(cfg, "save_btn"):
             qtbot.mouseClick(cfg.save_btn, Qt.MouseButton.LeftButton)
 
@@ -216,18 +257,23 @@ class TestMainWindow:
         qtbot.waitUntil(
             lambda: window.toggle_proxy_btn.text() == "Stop Proxy", timeout=10000
         )
+
         # Wait until proxy_url_label shows new port
         qtbot.waitUntil(
             lambda: f":{new_port}" in window.proxy_url_label.text(), timeout=5000
         )
         assert f":{new_port}" in window.proxy_url_label.text()
 
-        # -> Revert server port back to what it was
+        return original_port_text, new_port
+
+    def _revert_port_change(self, window, qtbot, cfg, original_port_text):
+        """Revert the port back to original and restart proxy."""
         # Stop proxy, revert port, save and restart proxy to restore original state
         qtbot.mouseClick(window.toggle_proxy_btn, Qt.MouseButton.LeftButton)
         qtbot.waitUntil(
             lambda: window.toggle_proxy_btn.text() == "Start Proxy", timeout=5000
         )
+
         cfg.port_input.setText(original_port_text)
         if hasattr(cfg, "save_btn"):
             qtbot.mouseClick(cfg.save_btn, Qt.MouseButton.LeftButton)
@@ -243,5 +289,36 @@ class TestMainWindow:
         )
         assert f":{original_port_text}" in window.proxy_url_label.text()
 
-        # Wait and check
+    def test_e2e(self, qtbot):
+        """End-to-end test of the main window functionality."""
+        # 1. Setup window and verify initial state
+        window = self._setup_window_and_verify_initial_state(qtbot)
+
+        # 2. Make HTTP request and execute it
+        async_request = self._make_test_request()
+        self._execute_async_request(async_request)
+
+        # 3. Verify request appears in list and select it
+        request_item = self._verify_request_in_list(window, qtbot)
+        self._select_request_and_verify_details(window, qtbot, request_item)
+
+        # 4. Test response tabs functionality
+        self._verify_response_tabs(window)
+
+        # 5. Test proxy toggle functionality
+        self._toggle_proxy_and_verify_state(window, qtbot, "Start Proxy")
+
+        # 6. Test clear requests functionality
+        self._clear_requests_and_verify(window, qtbot)
+
+        # 7. Test configuration tab functionality
+        cfg = self._switch_to_configuration_tab(window, qtbot)
+
+        # 8. Test port change functionality
+        original_port_text, new_port = self._test_port_change(window, qtbot, cfg)
+
+        # 9. Revert port changes to restore original state
+        self._revert_port_change(window, qtbot, cfg, original_port_text)
+
+        # Final wait
         qtbot.wait(200)

@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 class ReorderableListWidget(QListWidget):
-
     def __init__(self):
         super().__init__()
         self.setDragDropMode(QListWidget.DragDropMode.InternalMove)
