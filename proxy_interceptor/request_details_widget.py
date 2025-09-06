@@ -31,6 +31,14 @@ class RequestDetailsWidget(QWidget):
         self._flush_timer.setInterval(75)  # throttle UI updates (~13 fps)
         self._flush_timer.timeout.connect(self._flush_stream_buffer)
         logger.debug("RequestDetailsWidget initialized with throttled streaming buffer")
+
+        # Debouncing for streaming updates
+        self._update_timer = QTimer(self)
+        self._update_timer.setSingleShot(True)
+        self._update_timer.timeout.connect(self._debounced_update_streaming)
+        self._pending_update = None
+        self._debounce_interval = 200  # ms
+
         self._setup_ui()
 
     def _redact_header(self, key: str, value: str) -> str:
@@ -285,7 +293,19 @@ class RequestDetailsWidget(QWidget):
         if not updated_request or updated_request != self.current_request:
             return
 
-        logger.debug("Updating streaming content in details view (throttled)")
+        logger.debug("Scheduling debounced streaming content update")
+        self._pending_update = updated_request
+        self._update_timer.start(self._debounce_interval)
+
+    def _debounced_update_streaming(self):
+        """Debounced method that processes the actual streaming update."""
+        if hasattr(self, "_pending_update") and self._pending_update:
+            self._perform_actual_update(self._pending_update)
+            self._pending_update = None
+
+    def _perform_actual_update(self, updated_request: InterceptedRequest):
+        """Perform the actual UI update with the latest request data."""
+        logger.debug("Performing actual streaming content update (debounced)")
         self.current_request = updated_request
 
         new_title = self._build_response_title(updated_request)
