@@ -86,9 +86,9 @@ for size_info in "${SIZES[@]}"; do
     SIZE=$(echo $size_info | cut -d':' -f1)
     FILENAME=$(echo $size_info | cut -d':' -f2)
     OUTPUT_PATH="$OUTPUT_DIR/$ICONSET_DIR/$FILENAME"
-    
+
     echo "  📐 Creating ${SIZE}x${SIZE}: $FILENAME"
-    
+
     if [ -n "$CROP_CMD" ]; then
         magick "$INPUT_FILE" $CROP_CMD -resize "${SIZE}x${SIZE}" "$OUTPUT_PATH"
     else
@@ -103,7 +103,7 @@ echo "🔍 Verifying generated files..."
 for size_info in "${SIZES[@]}"; do
     FILENAME=$(echo $size_info | cut -d':' -f2)
     OUTPUT_PATH="$OUTPUT_DIR/$ICONSET_DIR/$FILENAME"
-    
+
     if [ -f "$OUTPUT_PATH" ]; then
         ACTUAL_SIZE=$(magick identify -format "%wx%h" "$OUTPUT_PATH")
         echo "  ✅ $FILENAME: $ACTUAL_SIZE"

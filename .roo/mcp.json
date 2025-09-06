@@ -2,11 +2,7 @@
   "mcpServers": {
     "trello-task-manager": {
       "url": "http://localhost:8050/sse",
-      "alwaysAllow": [
-        "get_tasks",
-        "mark_as_in_progress",
-        "add_task"
-      ]
+      "alwaysAllow": ["get_tasks", "mark_as_in_progress", "add_task"]
     }
   }
 }

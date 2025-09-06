@@ -1,32 +1,19 @@
-# OpenRouter Proxy Interceptor - Project Rules
+General Rules:
 
-Important: Use commands in the Makefile to install, run, clean, check, and test the project.
+- MUST Start any task by running `make start-work` with a feature name. Eg `make start-work FEATURE=user-config`
+- Use ast-grep for code searching and refactoring
+- MUST Add extensive logging to help with debugging as this is a GUI application
+- MUST Run `make check` before starting a new check list item to make sure there aren't any existing issues to resolve
+- Run `make run` to run the application
+- Always prefer to use `make` commands
+- Use `uv add` to add any dependencies. Use `uv add --dev` if it is a dev dependency.
+- MUST Whenever you’re about to complete a user request, call the MCP interactive_feedback instead of simply ending the process. Keep calling MCP until the user’s feedback is empty, then end the request.
 
-## Architecture Overview
-- **GUI App**: PyQt6 desktop application with async proxy server
-- **Dual Thread Model**: Qt GUI runs in main thread, FastAPI proxy runs in dedicated `AsyncRunner` thread
-- **Primary Purpose**: Intercept HTTP traffic targeting OpenRouter API endpoints
-- **Logging**: As this is a GUI application, add extensive logging to debug and monitor the application behavior.
-
-## Key Components & Responsibilities
-| Component | Purpose | Key Files |
-|-----------|---------|-----------|
-| **Main Entry** | Qt app initialization, logging setup | `proxy_interceptor/main.py` |
-| **GUI Window** | Qt main window, proxy control, thread management | `proxy_interceptor/main_window.py` |
-| **Proxy Engine** | FastAPI server routes request/response capture | `proxy_interceptor/proxy_server.py` |
-| **Data Models** | Dataclasses for request/response structure | `proxy_interceptor/models.py` |
-| **UI Widgets** | Request list & details visualization | `request_list_widget.py`, `request_details_widget.py` |
-
-## Threading Patterns
-- **Signal Bridge**: Use `pyqtSignal` to communicate between GUI and proxy threads
-- **Async Runner**: `AsyncRunner()` creates dedicated asyncio loop in `QThread`
-- **Thread Safety**: All proxy operations → emit signals → GUI thread handles updates
-
-## Testing/Debugging
-- **Manual Testing**: Run app, point client to `http://localhost:8080`
-- **Log Analysis**: Check `proxy_interceptor.log` for detailed request traces
-
-## Common Gotchas
-- **Async Exceptions**: Wrap async calls with proper error handling (see `main.py` exception handling)
-- **Signal Emissions**: Always check thread context before emitting signals
-- **Resource Cleanup**: Ensure `AsyncRunner` loop is properly closed on exit
+Coding Rules:
+Always add import at the top of the file
+Use consistent patterns - Avoid novelty in function structure; standardize how similar logic is implemented across the codebase.
+Break up complex chains - Split long function chains, iterators, or comprehensions into logical groups using helper functions or intermediate variables.
+Simplify conditionals - Keep condition tests short and prefer sequences of the same logical operator (avoid mixing && and || when possible).
+Minimize nesting depth - Avoid deep indentation; refactor deeply nested logic into separate functions.
+Use distinct, descriptive names - Choose visually distinguishable and meaningful variable names; never shadow variables.
+Minimize variable lifespan - Declare variables close to where they're used and limit how long they remain in scope.

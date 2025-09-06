@@ -209,9 +209,9 @@ class TestMainWindow:
             if tab_widget:
                 break
 
-        assert tab_widget is not None, (
-            "Main tab widget with 'Configuration' tab not found"
-        )
+        assert (
+            tab_widget is not None
+        ), "Main tab widget with 'Configuration' tab not found"
 
         return tab_widget, config_tab_index
 

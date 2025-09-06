@@ -5,6 +5,7 @@ This script automatically generates all necessary icon files from a single PNG s
 ## Prerequisites
 
 - **ImageMagick**: Required for image processing
+
   ```bash
   brew install imagemagick
   ```
@@ -32,6 +33,7 @@ This script automatically generates all necessary icon files from a single PNG s
 The script creates a `generated_icons/` directory containing:
 
 ### 1. Complete macOS Iconset
+
 - `[name].iconset/` - Properly structured iconset with all required sizes:
   - `icon_16x16.png` (16×16)
   - `icon_16x16@2x.png` (32×32)
@@ -45,10 +47,12 @@ The script creates a `generated_icons/` directory containing:
   - `icon_512x512@2x.png` (1024×1024)
 
 ### 2. Platform-Specific Files
+
 - `[name].icns` - macOS icon file (ready for app bundles)
 - `[name].ico` - Windows icon file (multi-size)
 
 ### 3. Individual PNG Files
+
 - `png_files/` directory with common sizes:
   - 16×16, 32×32, 48×48, 64×64, 128×128, 256×256, 512×512, 1024×1024
 
@@ -89,16 +93,19 @@ After generating your icons:
 ## Troubleshooting
 
 ### ImageMagick Not Found
+
 ```bash
 brew install imagemagick
 ```
 
 ### Permission Denied
+
 ```bash
 chmod +x generate_icon.sh
 ```
 
 ### Non-Square Input Images
+
 The script automatically handles non-square images by cropping them to square dimensions using center gravity. For best results, use a square source image.
 
 ## Tips for Best Results

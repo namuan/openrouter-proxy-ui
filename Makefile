@@ -2,11 +2,12 @@
 
 # Install dependencies
 install:
-	uv sync
+	@uv sync
+	@uv run pre-commit install
 
 # Run the application
 run:
-	uv run python -m proxy_interceptor.main
+	@uv run python -m proxy_interceptor.main
 
 # Clean build artifacts
 clean:
@@ -14,6 +15,7 @@ clean:
 	find . -type d -name "__pycache__" -delete
 	find . -type d -name "*.egg-info" -delete
 	rm -rf build/ dist/
+	@uvx pyclean .
 
 # Package the application
 package: clean
@@ -22,15 +24,26 @@ package: clean
 install-macosx: package ## Installs application in users Application folder
 	./scripts/install-macosx.sh OpenRouterProxy.app
 
+start-work: ## Start working on a new feature
+	@echo "🚀 Starting work on a new feature"
+	@mob start -i -b "$(FEATURE)"
+
 # Check code (lint and format)
-check:
-	uv run ruff check .
-	uv run ruff format .
-	@echo "Code check passed"
+check: ## Run code quality tools.
+	@echo "🚀 Checking lock file consistency with 'pyproject.toml'"
+	@uv lock --locked
+	@echo "🚀 Linting code: Running pre-commit"
+	@uv run pre-commit run -a
+	@mob next
 
 # Run tests (placeholder for future tests)
-test:
-	uv run pytest
+test: ## Run all unit tests
+	@echo "🚀 Running unit tests"
+	@uv run pytest -v
+
+test-single: ## Run a single test file (usage: make test-single TEST=test_config.py)
+	@echo "🚀 Running single test: $(TEST)"
+	@uv run pytest -v tests/$(TEST)
 
 # Generate high-resolution icons
 icons:
