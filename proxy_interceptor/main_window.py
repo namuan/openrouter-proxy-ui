@@ -643,6 +643,69 @@ class MainWindow(QMainWindow):
         except Exception:
             logger.exception("Error handling config_saved event")
 
+    def _handle_proxy_restart_logic(self, requires_restart: bool, new_port: int):
+        """Handle the proxy restart logic based on configuration changes.
+
+        Args:
+            requires_restart: True if configuration changes require proxy restart
+            new_port: The new port number from configuration
+        """
+        try:
+            is_running = self.async_runner.proxy_server.is_running
+
+            if is_running and requires_restart:
+                # Check if auto-restart is enabled
+                auto_restart_enabled = getattr(
+                    self.config_widget, "auto_restart_enabled", True
+                )
+
+                if auto_restart_enabled:
+                    logger.info(
+                        "Configuration changes detected that require proxy restart. Auto-restarting..."
+                    )
+                    self.show_status(
+                        "Restarting proxy to apply configuration changes...",
+                        "info",
+                        3000,
+                    )
+                    self.async_runner.stop_proxy()
+                    # Use a more robust restart mechanism with error handling
+                    QTimer.singleShot(800, self._restart_proxy_with_error_handling)
+                else:
+                    logger.info(
+                        "Configuration changes detected that require proxy restart. Asking user for confirmation..."
+                    )
+                    self._show_manual_restart_dialog()
+            elif is_running:
+                logger.debug("Configuration saved but no restart required")
+            else:
+                logger.debug("Proxy not running, restart not needed")
+
+        except Exception:
+            logger.exception(
+                "Error while attempting to restart proxy after config save"
+            )
+
+    def _update_cheatsheet_port(self, new_port: int):
+        """Update the port in the cheatsheet widget.
+
+        Args:
+            new_port: The new port number from configuration
+        """
+        try:
+            if self.cheatsheet_widget:
+                old_port = None
+                try:
+                    if self.async_runner and self.async_runner.proxy_server:
+                        old_port = int(self.async_runner.proxy_server.config.port)
+                except Exception:
+                    old_port = None
+                if old_port is None:
+                    old_port = new_port
+                self.cheatsheet_widget.update_port_and_save(old_port, new_port)
+        except Exception:
+            logger.exception("Failed to update cheatsheet after config save")
+
     def _on_config_saved_with_restart(self, requires_restart: bool):
         """Handle configuration save with intelligent restart logic.
 
@@ -654,57 +717,9 @@ class MainWindow(QMainWindow):
             self.proxy_url_label.setText(f"http://127.0.0.1:{new_port}")
 
             if self.async_runner and self.async_runner.proxy_server:
-                try:
-                    is_running = self.async_runner.proxy_server.is_running
+                self._handle_proxy_restart_logic(requires_restart, new_port)
 
-                    if is_running and requires_restart:
-                        # Check if auto-restart is enabled
-                        auto_restart_enabled = getattr(
-                            self.config_widget, "auto_restart_enabled", True
-                        )
-
-                        if auto_restart_enabled:
-                            logger.info(
-                                "Configuration changes detected that require proxy restart. Auto-restarting..."
-                            )
-                            self.show_status(
-                                "Restarting proxy to apply configuration changes...",
-                                "info",
-                                3000,
-                            )
-                            self.async_runner.stop_proxy()
-                            # Use a more robust restart mechanism with error handling
-                            QTimer.singleShot(
-                                800, self._restart_proxy_with_error_handling
-                            )
-                        else:
-                            logger.info(
-                                "Configuration changes detected that require proxy restart. Asking user for confirmation..."
-                            )
-                            self._show_manual_restart_dialog()
-                    elif is_running:
-                        logger.debug("Configuration saved but no restart required")
-                    else:
-                        logger.debug("Proxy not running, restart not needed")
-
-                except Exception:
-                    logger.exception(
-                        "Error while attempting to restart proxy after config save"
-                    )
-
-            try:
-                if self.cheatsheet_widget:
-                    old_port = None
-                    try:
-                        if self.async_runner and self.async_runner.proxy_server:
-                            old_port = int(self.async_runner.proxy_server.config.port)
-                    except Exception:
-                        old_port = None
-                    if old_port is None:
-                        old_port = new_port
-                    self.cheatsheet_widget.update_port_and_save(old_port, new_port)
-            except Exception:
-                logger.exception("Failed to update cheatsheet after config save")
+            self._update_cheatsheet_port(new_port)
 
         except Exception:
             logger.exception("Error handling config_saved_with_restart event")
@@ -781,7 +796,9 @@ class MainWindow(QMainWindow):
                 self.async_runner.proxy_started.disconnect(self._on_restart_success)
                 self.async_runner.proxy_error.disconnect(self._on_restart_error)
             except Exception:
-                pass  # Connections might not exist
+                logger.debug(
+                    "Connections might not exist during disconnect"
+                )  # Connections might not exist
 
             logger.info("Proxy successfully restarted after configuration change")
             self.show_status(
@@ -802,7 +819,9 @@ class MainWindow(QMainWindow):
                 self.async_runner.proxy_started.disconnect(self._on_restart_success)
                 self.async_runner.proxy_error.disconnect(self._on_restart_error)
             except Exception:
-                pass  # Connections might not exist
+                logger.debug(
+                    "Connections might not exist during disconnect"
+                )  # Connections might not exist
 
             logger.error(f"Proxy restart failed: {error_msg}")
             self.show_status(f"Failed to restart proxy: {error_msg}", "error", 5000)
@@ -818,7 +837,9 @@ class MainWindow(QMainWindow):
                 self.async_runner.proxy_started.disconnect(self._on_restart_success)
                 self.async_runner.proxy_error.disconnect(self._on_restart_error)
             except Exception:
-                pass  # Connections might not exist
+                logger.debug(
+                    "Connections might not exist during disconnect"
+                )  # Connections might not exist
 
             logger.error("Proxy restart timed out")
             self.show_status(
