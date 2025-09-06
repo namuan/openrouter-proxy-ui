@@ -1,8 +1,9 @@
+import contextlib
 import json
 import logging
 
 import defusedxml.minidom
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import (
     QLabel,
     QSplitter,
@@ -22,7 +23,14 @@ class RequestDetailsWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.current_request = None
-        logger.debug("RequestDetailsWidget initialized")
+        # Buffer for streaming to avoid full-document replacement per chunk
+        self._stream_buffer: str = ""
+        self._last_meta_text: str = ""
+        self._flush_timer = QTimer(self)
+        self._flush_timer.setSingleShot(True)
+        self._flush_timer.setInterval(75)  # throttle UI updates (~13 fps)
+        self._flush_timer.timeout.connect(self._flush_stream_buffer)
+        logger.debug("RequestDetailsWidget initialized with throttled streaming buffer")
         self._setup_ui()
 
     def _redact_header(self, key: str, value: str) -> str:
@@ -102,9 +110,15 @@ class RequestDetailsWidget(QWidget):
         self.response_body_tabs = QTabWidget()
 
         self.response_body_parsed = QTextEdit()
+        self.response_body_parsed.setReadOnly(True)
+        with contextlib.suppress(Exception):
+            self.response_body_parsed.setUndoRedoEnabled(False)
         self.response_body_tabs.addTab(self.response_body_parsed, "Parsed")
 
         self.response_body_raw = QTextEdit()
+        self.response_body_raw.setReadOnly(True)
+        with contextlib.suppress(Exception):
+            self.response_body_raw.setUndoRedoEnabled(False)
         self.response_body_tabs.addTab(self.response_body_raw, "Raw")
 
         response_layout.addWidget(self.response_body_tabs)
@@ -118,6 +132,23 @@ class RequestDetailsWidget(QWidget):
 
         layout.addWidget(splitter)
         logger.debug("RequestDetailsWidget UI setup complete")
+
+    def _flush_stream_buffer(self):
+        try:
+            if self._stream_buffer is None:
+                return
+            # During streaming, avoid heavy formatting; assume server already extracted readable text
+            content = self._stream_buffer
+            self.response_body_parsed.setPlainText(content)
+            # Move cursor to end without ensureCursorVisible (costly); rely on QTextEdit behavior
+            cursor = self.response_body_parsed.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            self.response_body_parsed.setTextCursor(cursor)
+            logger.debug(
+                f"[Streaming Flush] Updated parsed body with {len(content)} chars"
+            )
+        except Exception:
+            logger.exception("Failed flushing streaming buffer to UI")
 
     def _format_body_content(self, body: str, headers: dict) -> str:
         if not body or not body.strip():
@@ -161,6 +192,10 @@ class RequestDetailsWidget(QWidget):
 
     def set_request(self, request: InterceptedRequest | None):
         self.current_request = request
+        self._stream_buffer = ""
+        self._last_meta_text = ""
+        if self._flush_timer.isActive():
+            self._flush_timer.stop()
 
         if request is None:
             logger.debug("Clearing request details (None request)")
@@ -223,46 +258,42 @@ class RequestDetailsWidget(QWidget):
 
         logger.debug("Request details updated successfully")
 
+    def _build_response_title(self, r: InterceptedRequest) -> str:
+        meta: list[str] = []
+        try:
+            if r.response.is_streaming and not r.response.streaming_complete:
+                content_len = len(r.response.streaming_content or "")
+                meta.append(f"streaming: {content_len} chars")
+            elif r.response.streaming_complete:
+                if r.response.latency_ms is not None:
+                    meta.append(f"{r.response.latency_ms:.0f}ms")
+                if r.response.total_tokens is not None:
+                    meta.append(f"tok:{r.response.total_tokens}")
+        except Exception as e:
+            logger.debug(f"Error extracting streaming meta info: {e}")
+        meta_suffix = f"  ({', '.join(meta)})" if meta else ""
+        return f"RESPONSE: ({r.response.status_code} {r.response.status_text}){meta_suffix}"
+
+    def _schedule_stream_flush(self, content: str):
+        if not content:
+            return
+        self._stream_buffer = content
+        if not self._flush_timer.isActive():
+            self._flush_timer.start()
+
     def update_streaming_content(self, updated_request: InterceptedRequest):
         if not updated_request or updated_request != self.current_request:
             return
 
-        logger.debug("Updating streaming content in details view")
-
+        logger.debug("Updating streaming content in details view (throttled)")
         self.current_request = updated_request
 
-        meta = []
-        try:
-            if (
-                updated_request.response.is_streaming
-                and not updated_request.response.streaming_complete
-            ):
-                content_len = len(updated_request.response.streaming_content)
-                meta.append(f"streaming: {content_len} chars")
-            elif updated_request.response.streaming_complete:
-                if updated_request.response.latency_ms is not None:
-                    meta.append(f"{updated_request.response.latency_ms:.0f}ms")
-                if updated_request.response.total_tokens is not None:
-                    meta.append(f"tok:{updated_request.response.total_tokens}")
-        except Exception as e:
-            logger.debug(f"Error extracting streaming meta info: {e}")
+        new_title = self._build_response_title(updated_request)
+        if new_title != self._last_meta_text:
+            self._last_meta_text = new_title
+            self.response_title.setText(new_title)
 
-        meta_suffix = f"  ({', '.join(meta)})" if meta else ""
-        self.response_title.setText(
-            f"RESPONSE: ({updated_request.response.status_code} {updated_request.response.status_text}){meta_suffix}"
-        )
-
-        streaming_content = updated_request.response.streaming_content or ""
-        if streaming_content:
-            formatted_content = self._format_body_content(
-                streaming_content, updated_request.response.headers
-            )
-            self.response_body_parsed.setPlainText(formatted_content)
-
-            cursor = self.response_body_parsed.textCursor()
-            cursor.movePosition(cursor.MoveOperation.End)
-            self.response_body_parsed.setTextCursor(cursor)
-            self.response_body_parsed.ensureCursorVisible()
+        self._schedule_stream_flush(updated_request.response.streaming_content or "")
 
         if updated_request.response.streaming_complete:
             raw_content = (
