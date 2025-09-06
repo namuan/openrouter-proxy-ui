@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSplitter,
     QTabWidget,
@@ -229,6 +230,12 @@ class MainWindow(QMainWindow):
         self.config_widget = ConfigWidget()
         self.config_widget.config_changed.connect(self._on_config_changed)
         self.config_widget.config_saved.connect(self._on_config_saved)
+        self.config_widget.config_saved_with_restart.connect(
+            self._on_config_saved_with_restart
+        )
+        self.config_widget.auto_restart_preference_changed.connect(
+            self._on_auto_restart_preference_changed
+        )
 
         self.cheatsheet_widget = CheatsheetWidget()
 
@@ -635,6 +642,247 @@ class MainWindow(QMainWindow):
                 logger.exception("Failed to update cheatsheet after config save")
         except Exception:
             logger.exception("Error handling config_saved event")
+
+    def _on_config_saved_with_restart(self, requires_restart: bool):
+        """Handle configuration save with intelligent restart logic.
+
+        Args:
+            requires_restart: True if configuration changes require proxy restart
+        """
+        try:
+            new_port = int(self.config_widget.get_port())
+            self.proxy_url_label.setText(f"http://127.0.0.1:{new_port}")
+
+            if self.async_runner and self.async_runner.proxy_server:
+                try:
+                    is_running = self.async_runner.proxy_server.is_running
+
+                    if is_running and requires_restart:
+                        # Check if auto-restart is enabled
+                        auto_restart_enabled = getattr(
+                            self.config_widget, "auto_restart_enabled", True
+                        )
+
+                        if auto_restart_enabled:
+                            logger.info(
+                                "Configuration changes detected that require proxy restart. Auto-restarting..."
+                            )
+                            self.show_status(
+                                "Restarting proxy to apply configuration changes...",
+                                "info",
+                                3000,
+                            )
+                            self.async_runner.stop_proxy()
+                            # Use a more robust restart mechanism with error handling
+                            QTimer.singleShot(
+                                800, self._restart_proxy_with_error_handling
+                            )
+                        else:
+                            logger.info(
+                                "Configuration changes detected that require proxy restart. Asking user for confirmation..."
+                            )
+                            self._show_manual_restart_dialog()
+                    elif is_running:
+                        logger.debug("Configuration saved but no restart required")
+                    else:
+                        logger.debug("Proxy not running, restart not needed")
+
+                except Exception:
+                    logger.exception(
+                        "Error while attempting to restart proxy after config save"
+                    )
+
+            try:
+                if self.cheatsheet_widget:
+                    old_port = None
+                    try:
+                        if self.async_runner and self.async_runner.proxy_server:
+                            old_port = int(self.async_runner.proxy_server.config.port)
+                    except Exception:
+                        old_port = None
+                    if old_port is None:
+                        old_port = new_port
+                    self.cheatsheet_widget.update_port_and_save(old_port, new_port)
+            except Exception:
+                logger.exception("Failed to update cheatsheet after config save")
+
+        except Exception:
+            logger.exception("Error handling config_saved_with_restart event")
+
+    def _restart_proxy_with_error_handling(self):
+        """Restart proxy with proper error handling and user feedback."""
+        try:
+            if not self.async_runner:
+                logger.error("Cannot restart proxy: AsyncRunner not available")
+                self.show_status(
+                    "Failed to restart proxy: Service not available", "error", 5000
+                )
+                return
+
+            # Check if proxy is still running before attempting restart
+            if (
+                self.async_runner.proxy_server
+                and self.async_runner.proxy_server.is_running
+            ):
+                logger.warning(
+                    "Proxy still running during restart attempt, stopping first"
+                )
+                self.async_runner.stop_proxy()
+                # Wait a bit longer and try again
+                QTimer.singleShot(1200, self._attempt_proxy_start)
+            else:
+                self._attempt_proxy_start()
+
+        except Exception as e:
+            logger.exception("Error during proxy restart preparation")
+            self.show_status(f"Failed to restart proxy: {e!s}", "error", 5000)
+
+    def _attempt_proxy_start(self):
+        """Attempt to start the proxy with error handling."""
+        try:
+            if not self.async_runner:
+                logger.error("Cannot start proxy: AsyncRunner not available")
+                self.show_status(
+                    "Failed to start proxy: Service not available", "error", 5000
+                )
+                return
+
+            # Set up a timeout to detect if restart fails
+            self._restart_timeout_timer = QTimer(self)
+            self._restart_timeout_timer.setSingleShot(True)
+            self._restart_timeout_timer.timeout.connect(self._on_restart_timeout)
+            self._restart_timeout_timer.start(10000)  # 10 second timeout
+
+            # Connect to proxy started signal to clear timeout
+            self.async_runner.proxy_started.connect(
+                self._on_restart_success, Qt.ConnectionType.UniqueConnection
+            )
+            self.async_runner.proxy_error.connect(
+                self._on_restart_error, Qt.ConnectionType.UniqueConnection
+            )
+
+            logger.info("Attempting to start proxy after configuration change")
+            self.async_runner.start_proxy()
+
+        except Exception as e:
+            logger.exception("Error during proxy start attempt")
+            self.show_status(f"Failed to start proxy: {e!s}", "error", 5000)
+            if hasattr(self, "_restart_timeout_timer"):
+                self._restart_timeout_timer.stop()
+
+    def _on_restart_success(self):
+        """Handle successful proxy restart."""
+        try:
+            if hasattr(self, "_restart_timeout_timer"):
+                self._restart_timeout_timer.stop()
+
+            # Disconnect the temporary connections
+            try:
+                self.async_runner.proxy_started.disconnect(self._on_restart_success)
+                self.async_runner.proxy_error.disconnect(self._on_restart_error)
+            except Exception:
+                pass  # Connections might not exist
+
+            logger.info("Proxy successfully restarted after configuration change")
+            self.show_status(
+                "Proxy restarted successfully with new configuration", "success", 3000
+            )
+
+        except Exception:
+            logger.exception("Error handling restart success")
+
+    def _on_restart_error(self, error_msg: str):
+        """Handle proxy restart errors."""
+        try:
+            if hasattr(self, "_restart_timeout_timer"):
+                self._restart_timeout_timer.stop()
+
+            # Disconnect the temporary connections
+            try:
+                self.async_runner.proxy_started.disconnect(self._on_restart_success)
+                self.async_runner.proxy_error.disconnect(self._on_restart_error)
+            except Exception:
+                pass  # Connections might not exist
+
+            logger.error(f"Proxy restart failed: {error_msg}")
+            self.show_status(f"Failed to restart proxy: {error_msg}", "error", 5000)
+
+        except Exception:
+            logger.exception("Error handling restart error")
+
+    def _on_restart_timeout(self):
+        """Handle proxy restart timeout."""
+        try:
+            # Disconnect the temporary connections
+            try:
+                self.async_runner.proxy_started.disconnect(self._on_restart_success)
+                self.async_runner.proxy_error.disconnect(self._on_restart_error)
+            except Exception:
+                pass  # Connections might not exist
+
+            logger.error("Proxy restart timed out")
+            self.show_status(
+                "Proxy restart timed out. Please try starting manually.", "error", 5000
+            )
+
+        except Exception:
+            logger.exception("Error handling restart timeout")
+
+    def _show_manual_restart_dialog(self):
+        """Show a dialog asking user if they want to restart the proxy."""
+        try:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("Proxy Restart Required")
+            msg_box.setText(
+                "Configuration changes require a proxy restart to take effect."
+            )
+            msg_box.setInformativeText("Would you like to restart the proxy now?")
+            msg_box.setStandardButtons(
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            msg_box.setDefaultButton(QMessageBox.StandardButton.Yes)
+            msg_box.setIcon(QMessageBox.Icon.Question)
+
+            result = msg_box.exec()
+
+            if result == QMessageBox.StandardButton.Yes:
+                logger.info("User confirmed manual proxy restart")
+                self.show_status(
+                    "Restarting proxy to apply configuration changes...", "info", 3000
+                )
+                self.async_runner.stop_proxy()
+                QTimer.singleShot(800, self._restart_proxy_with_error_handling)
+            else:
+                logger.info("User declined manual proxy restart")
+                self.show_status(
+                    "Configuration saved. Restart proxy manually to apply changes.",
+                    "warning",
+                    5000,
+                )
+
+        except Exception as e:
+            logger.exception("Error showing manual restart dialog")
+            self.show_status(f"Error showing restart dialog: {e!s}", "error", 5000)
+
+    def _on_auto_restart_preference_changed(self, enabled: bool):
+        """Handle auto-restart preference change."""
+        try:
+            if enabled:
+                logger.info("Auto-restart preference enabled")
+                self.show_status(
+                    "Auto-restart enabled: Proxy will restart automatically when needed",
+                    "info",
+                    3000,
+                )
+            else:
+                logger.info("Auto-restart preference disabled")
+                self.show_status(
+                    "Auto-restart disabled: You will be asked before restarting proxy",
+                    "info",
+                    3000,
+                )
+        except Exception:
+            logger.exception("Error handling auto-restart preference change")
 
     def closeEvent(self, event):
         logger.info("Application closing")

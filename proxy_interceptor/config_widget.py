@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIntValidator
 from PyQt6.QtWidgets import (
+    QCheckBox,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -61,6 +63,7 @@ class AppConfig(BaseModel):
     api_models: list[str] = Field(default_factory=list)
     auth_tokens: set[str] = Field(default_factory=set)
     port: int = 8080
+    auto_restart_enabled: bool = True  # Default to auto-restart enabled
 
     @field_validator("api_keys")
     @classmethod
@@ -100,6 +103,10 @@ def is_port_available(port: int, host: str = "127.0.0.1") -> bool:
 class ConfigWidget(QWidget):
     config_changed = pyqtSignal()
     config_saved = pyqtSignal()
+    config_saved_with_restart = pyqtSignal(bool)  # Signal with restart requirement flag
+    auto_restart_preference_changed = pyqtSignal(
+        bool
+    )  # Signal when auto-restart preference changes
     status = pyqtSignal(str, str)
 
     def __init__(self):
@@ -107,7 +114,10 @@ class ConfigWidget(QWidget):
         self.api_keys = []
         self.api_models = []
         self.port = 8080
+        self.auto_restart_enabled = True
         self._saved_port: int | None = None
+        # Store the last saved configuration for comparison
+        self._last_saved_config: AppConfig | None = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -187,6 +197,15 @@ class ConfigWidget(QWidget):
 
         bottom_layout.addWidget(port_group)
 
+        # Restart notification widget (initially hidden)
+        self.restart_notification = self._create_restart_notification()
+        main_layout.addWidget(self.restart_notification)
+        self.restart_notification.hide()
+
+        # Auto-restart preference
+        self.auto_restart_checkbox = self._create_auto_restart_preference()
+        main_layout.addWidget(self.auto_restart_checkbox)
+
         self.save_btn = QPushButton("Save Configuration")
         self.save_btn.clicked.connect(self._save_config)
         bottom_layout.addWidget(self.save_btn)
@@ -200,9 +219,114 @@ class ConfigWidget(QWidget):
 
         logger.debug("ConfigWidget UI setup complete")
 
+    def _create_restart_notification(self) -> QWidget:
+        """Create a notification widget to warn users about proxy restart."""
+        notification_frame = QFrame()
+        notification_frame.setFrameStyle(QFrame.Shape.Box)
+        notification_frame.setStyleSheet("""
+            QFrame {
+                background-color: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 4px;
+                padding: 8px;
+                margin: 4px 0px;
+            }
+            QLabel {
+                color: #856404;
+                font-weight: bold;
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        layout = QHBoxLayout(notification_frame)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        warning_label = QLabel(
+            "⚠️ Saving these changes will restart the proxy server to apply new configuration."
+        )
+        layout.addWidget(warning_label)
+        layout.addStretch()
+
+        return notification_frame
+
+    def _create_auto_restart_preference(self) -> QWidget:
+        """Create a checkbox for auto-restart preference."""
+        preference_frame = QFrame()
+        preference_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 8px;
+                margin: 4px 0px;
+            }
+            QCheckBox {
+                color: #495057;
+                font-weight: normal;
+                background: transparent;
+                border: none;
+            }
+        """)
+
+        layout = QHBoxLayout(preference_frame)
+        layout.setContentsMargins(8, 8, 8, 8)
+
+        checkbox = QCheckBox(
+            "Automatically restart proxy when configuration changes require it"
+        )
+        checkbox.setChecked(self.auto_restart_enabled)
+        checkbox.toggled.connect(self._on_auto_restart_preference_changed)
+        layout.addWidget(checkbox)
+        layout.addStretch()
+
+        # Store the checkbox widget for later access
+        self.auto_restart_checkbox = checkbox
+
+        return preference_frame
+
+    def _on_auto_restart_preference_changed(self, enabled: bool):
+        """Handle auto-restart preference change."""
+        self.auto_restart_enabled = enabled
+        self.auto_restart_preference_changed.emit(enabled)
+        logger.info(f"Auto-restart preference changed to: {enabled}")
+        self._on_config_changed()
+
     def _on_config_changed(self):
         self._parse_config()
+        self._update_restart_notification()
         self.config_changed.emit()
+
+    def _update_restart_notification(self):
+        """Update the restart notification visibility based on current changes."""
+        try:
+            # Create a temporary config to check if restart is required
+            temp_config = AppConfig(
+                api_keys=self.api_keys,
+                api_models=self.api_models,
+                auth_tokens=set(self.auth_tokens),
+                port=int(self.port),
+                auto_restart_enabled=self.auto_restart_enabled,
+            )
+
+            requires_restart = self._config_requires_restart(temp_config)
+
+            if requires_restart:
+                self.restart_notification.show()
+                logger.debug(
+                    "Showing restart notification due to configuration changes"
+                )
+            else:
+                self.restart_notification.hide()
+                logger.debug("Hiding restart notification - no restart required")
+
+        except (ValueError, ValidationError) as e:
+            # If config is invalid, hide notification
+            self.restart_notification.hide()
+            logger.debug(f"Hiding restart notification due to invalid config: {e}")
+        except Exception as e:
+            logger.warning(f"Error updating restart notification: {e}")
+            self.restart_notification.hide()
 
     def _on_models_selected(self, models):
         self.api_models = models
@@ -211,7 +335,7 @@ class ConfigWidget(QWidget):
             self.model_tracking_widget.set_selected_models(models)
         except Exception:
             logger.exception("Failed to update selected models in tracking widget")
-        self.config_changed.emit()
+        self._on_config_changed()
 
     def _on_models_reordered(self, models):
         """Handle when models are reordered in the tracking widget."""
@@ -222,7 +346,7 @@ class ConfigWidget(QWidget):
             self.model_selection_widget.set_selected_models(models)
         except Exception:
             logger.exception("Failed to update model selection widget after reordering")
-        self.config_changed.emit()
+        self._on_config_changed()
 
     def _on_model_removed(self, model_name):
         """Handle when a model is automatically removed due to failures."""
@@ -238,7 +362,7 @@ class ConfigWidget(QWidget):
                 logger.exception(
                     "Failed to update model selection widget after removal"
                 )
-            self.config_changed.emit()
+            self._on_config_changed()
             # Show status message to user
             self.status.emit(
                 f"Model '{model_name}' removed due to excessive failures (>5)",
@@ -268,6 +392,41 @@ class ConfigWidget(QWidget):
         else:
             self.port = 8080
 
+    def _config_requires_restart(self, new_config: AppConfig) -> bool:
+        """Check if configuration changes require proxy restart.
+
+        Returns True if any of the following changed:
+        - API keys (added, removed, or modified)
+        - Models (added, removed, or reordered)
+        - Port number
+        """
+        if self._last_saved_config is None:
+            # First time saving, no restart needed
+            logger.debug("No previous config found, restart not required")
+            return False
+
+        old_config = self._last_saved_config
+
+        # Check if port changed
+        if old_config.port != new_config.port:
+            logger.info(
+                f"Port changed from {old_config.port} to {new_config.port}, restart required"
+            )
+            return True
+
+        # Check if API keys changed
+        if set(old_config.api_keys) != set(new_config.api_keys):
+            logger.info("API keys changed, restart required")
+            return True
+
+        # Check if models changed (order matters for model selection)
+        if old_config.api_models != new_config.api_models:
+            logger.info("Models changed or reordered, restart required")
+            return True
+
+        logger.debug("No configuration changes requiring restart detected")
+        return False
+
     def _save_config(self):
         try:
             self._parse_config()
@@ -278,6 +437,7 @@ class ConfigWidget(QWidget):
                     api_models=self.api_models,
                     auth_tokens=set(self.auth_tokens),
                     port=int(self.port),
+                    auto_restart_enabled=self.auto_restart_enabled,
                 )
             except ValidationError as ve:
                 self.status.emit(
@@ -299,19 +459,38 @@ class ConfigWidget(QWidget):
                 logger.error(f"Port {cfg.port} unavailable during save")
                 return
 
+            # Check if configuration changes require restart
+            requires_restart = self._config_requires_restart(cfg)
+
             config_data = cfg.model_dump(mode="json")
 
             config_file = get_config_file_path()
             with open(config_file, "w") as f:
                 json.dump(config_data, f, indent=2)
 
+            # Store the saved configuration for future comparisons
+            self._last_saved_config = cfg
             self._saved_port = cfg.port
 
-            self.status.emit(f"Configuration saved to: {config_file}", "success")
-            logger.info(f"Configuration saved to {config_file}")
+            # Hide the restart notification after successful save
+            self.restart_notification.hide()
+
+            if requires_restart:
+                self.status.emit(
+                    f"Configuration saved to: {config_file}. Proxy will restart to apply changes.",
+                    "success",
+                )
+                logger.info(
+                    f"Configuration saved to {config_file} with restart required"
+                )
+            else:
+                self.status.emit(f"Configuration saved to: {config_file}", "success")
+                logger.info(f"Configuration saved to {config_file}")
 
             try:
                 self.config_saved.emit()
+                # Emit the new signal with restart requirement information
+                self.config_saved_with_restart.emit(requires_restart)
             except Exception:
                 logger.exception("Failed to emit config_saved signal")
 
@@ -331,7 +510,10 @@ class ConfigWidget(QWidget):
                 self.api_models = cfg.api_models
                 self.auth_tokens = set(cfg.auth_tokens)
                 self.port = int(cfg.port)
+                self.auto_restart_enabled = cfg.auto_restart_enabled
                 self._saved_port = self.port
+                # Store loaded config as the baseline for comparison
+                self._last_saved_config = cfg
             except Exception as ve:
                 logger.warning(f"Invalid config file, using safe defaults: {ve}")
                 self.api_keys = loaded.get("api_keys", [])
@@ -345,6 +527,9 @@ class ConfigWidget(QWidget):
                     self.api_models = saved_models
                 self.auth_tokens = set(loaded.get("auth_tokens", []))
                 self.port = int(loaded.get("port", 8080))
+                self.auto_restart_enabled = loaded.get(
+                    "auto_restart_enabled", True
+                )  # Default to True for backward compatibility
                 self._saved_port = self.port
 
             self._update_ui()
@@ -359,6 +544,7 @@ class ConfigWidget(QWidget):
             self.api_keys = []
             self.api_models = ["qwen/qwen3-coder:free", "openai/gpt-oss-20b:free"]
             self.auth_tokens = set()
+            self.auto_restart_enabled = True  # Default for new installations
             self._update_ui()
             logger.info("No configuration file found, using defaults")
             logger.debug(
@@ -371,6 +557,7 @@ class ConfigWidget(QWidget):
             self.api_keys = []
             self.api_models = ["qwen/qwen3-coder:free", "openai/gpt-oss-20b:free"]
             self.auth_tokens = set()
+            self.auto_restart_enabled = True  # Default for error cases
             self._update_ui()
 
     def _mask_api_key(self, api_key: str) -> str:
@@ -398,6 +585,11 @@ class ConfigWidget(QWidget):
 
         try:
             self.port_input.setText(str(int(self.port)))
+            # Update auto-restart checkbox state
+            if hasattr(self, "auto_restart_checkbox") and hasattr(
+                self.auto_restart_checkbox, "setChecked"
+            ):
+                self.auto_restart_checkbox.setChecked(self.auto_restart_enabled)
         finally:
             self.api_keys_text.textChanged.connect(self._on_config_changed)
             self.port_input.textChanged.connect(self._on_config_changed)
