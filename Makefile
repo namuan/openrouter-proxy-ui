@@ -15,11 +15,10 @@ clean:
 	@find . -type d -name "__pycache__" -delete
 	@find . -type d -name "*.egg-info" -delete
 	@rm -rf build/ dist/
-	@uvx pyclean .
 
 # Package the application
 package: clean
-	@uv run pyinstaller proxy_interceptor.spec --clean
+	@uv run --no-sync pyinstaller proxy_interceptor.spec --clean
 
 install-macosx: package ## Installs application in users Application folder
 	./scripts/install-macosx.sh OpenRouterProxy.app
