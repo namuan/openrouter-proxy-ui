@@ -22,6 +22,10 @@ pair.
   – Complete request/response headers and bodies (pretty-printed JSON, XML, HTML).
   — Streaming responses are captured and re-assembled for easy reading.
 
+## Setup / Installation
+
+Run `install.command` from Finder or Terminal.
+
 ## Development
 
 ### Using Make Commands

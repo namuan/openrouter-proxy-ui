@@ -1,4 +1,4 @@
-.PHONY: install run dev clean lint format test icons
+.PHONY: $(shell grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk -F: '{print $$1}')
 
 # Install dependencies
 install:
@@ -11,18 +11,23 @@ run:
 
 # Clean build artifacts
 clean:
-	find . -type f -name "*.pyc" -delete
-	find . -type d -name "__pycache__" -delete
-	find . -type d -name "*.egg-info" -delete
-	rm -rf build/ dist/
+	@find . -type f -name "*.pyc" -delete
+	@find . -type d -name "__pycache__" -delete
+	@find . -type d -name "*.egg-info" -delete
+	@rm -rf build/ dist/
 	@uvx pyclean .
 
 # Package the application
 package: clean
-	uv run pyinstaller proxy_interceptor.spec --clean
+	@uv run pyinstaller proxy_interceptor.spec --clean
 
 install-macosx: package ## Installs application in users Application folder
 	./scripts/install-macosx.sh OpenRouterProxy.app
+
+setup: ## One command setup
+	@uv sync
+	@make install-macosx
+	@echo "Installation completed"
 
 start-work: ## Start working on a new feature
 	@echo "🚀 Starting work on a new feature"
@@ -49,13 +54,8 @@ test-single: ## Run a single test file (usage: make test-single TEST=test_config
 icons:
 	./generate_icon.sh assets/or-proxy.png or-proxy
 
-# Help target
-help:
+help: ## Show this help
 	@echo "Available targets:"
-	@echo "  install - Install dependencies"
-	@echo "  run     - Run the application"
-	@echo "  clean   - Clean build artifacts"
-	@echo "  check   - Run checks"
-	@echo "  test    - Run tests"
-	@echo "  icons   - Generate high-resolution icons from PNG source"
-	@echo "  help    - Show this help"
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| sort \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
