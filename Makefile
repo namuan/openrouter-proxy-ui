@@ -25,7 +25,7 @@ install-macosx: package ## Installs application in users Application folder
 	./scripts/install-macosx.sh OpenRouterProxy.app
 
 setup: ## One command setup
-	@uv sync
+	@uv sync --no-dev
 	@make install-macosx
 	@echo "Installation completed"
 
