@@ -16,31 +16,19 @@ if command -v uv >/dev/null 2>&1; then
 else
     log "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    log "uv installed"
+    export PATH="$HOME/.local/bin:$PATH"
+    log "uv installed. PATH updated to include $HOME/.local/bin"
 fi
 
-log "=== Step 2: Downloading latest source zip to a temporary directory ==="
-LATEST_URL="https://github.com/namuan/openrouter-proxy-ui/archive/refs/heads/main.zip"
-TMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'orproxy')
-log "Created temporary directory: $TMP_DIR"
-cd "$TMP_DIR"
-log "Downloading: $LATEST_URL"
-curl -fL "$LATEST_URL" -o app.zip
-log "Download complete: $(du -h app.zip | awk '{print $1}')"
-
-log "Unzipping archive in temporary directory"
-unzip -oq app.zip
-# Determine the top-level directory name inside the zip
-APP_DIR=$(unzip -Z -1 app.zip | head -1 | cut -d/ -f1)
-if [[ -z "$APP_DIR" || ! -d "$APP_DIR" ]]; then
-  log "ERROR: Failed to determine extracted directory from zip."
-  exit 1
-fi
-log "Extracted directory: $APP_DIR"
-
-log "=== Step 3: Moving extracted app into ~/Applications ==="
+log "=== Step 2: Moving extracted app into ~/Applications ==="
 mkdir -p "$HOME/Applications"
-cd "$APP_DIR"
+echo $(PWD)
+
+# Change to the directory where this script is located
+cd "$(dirname "$0")"
+log "Changed to script directory: $(pwd)"
+
 make setup
 
-log "✅ Installation complete! The application is now in ~/Applications ($TARGET_DIR)."
+log "✅ Installation complete! The application is now in ~/Applications."
+log "✅ You can close this terminal window."
