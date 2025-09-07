@@ -22,7 +22,6 @@ fi
 
 log "=== Step 2: Moving extracted app into ~/Applications ==="
 mkdir -p "$HOME/Applications"
-echo $(PWD)
 
 # Change to the directory where this script is located
 cd "$(dirname "$0")"
