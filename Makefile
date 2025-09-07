@@ -18,7 +18,7 @@ clean:
 
 # Package the application
 package: clean
-	@uv run --no-sync pyinstaller proxy_interceptor.spec --clean
+	@uvx pyinstaller proxy_interceptor.spec --clean
 
 install-macosx: package ## Installs application in users Application folder
 	./scripts/install-macosx.sh OpenRouterProxy.app
