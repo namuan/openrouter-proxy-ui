@@ -48,6 +48,6 @@ repos:
     hooks:
       - id: xenon
         name: xenon
-        entry: uv run xenon --max-absolute D ./
+        entry: uv run xenon --max-absolute C ./
         language: system
         types: [python]
