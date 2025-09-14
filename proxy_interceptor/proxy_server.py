@@ -114,96 +114,135 @@ class ProxyServer:
             )
             return idx
 
-    # ruff: noqa: C901
+    def _extract_content_from_chunk(self, chunk_text: str) -> str:
+        """Extract content from a streaming chunk."""
+        content_parts = []
+        for line in chunk_text.split("\n"):
+            if line.startswith("data: ") and not line.startswith("data: [DONE]"):
+                json_data = line[6:]
+                if json_data.strip():
+                    try:
+                        data = json.loads(json_data)
+                        if "choices" in data and len(data["choices"]) > 0:
+                            delta = data["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                content_parts.append(content)
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+        return "".join(content_parts)
+
+    def _process_chunk_content(
+        self,
+        chunk: bytes,
+        extracted_content: list[str],
+        intercepted_request: InterceptedRequest,
+    ) -> bool:
+        """Process chunk content and return whether it had content."""
+        try:
+            chunk_text = chunk.decode("utf-8")
+            content = self._extract_content_from_chunk(chunk_text)
+            if content:
+                extracted_content.append(content)
+                return True
+        except UnicodeDecodeError:
+            pass
+        return False
+
+    def _update_streaming_response(
+        self, intercepted_request: InterceptedRequest, extracted_content: list[str]
+    ):
+        """Update the streaming response with current content."""
+        intercepted_request.response.streaming_content = "".join(extracted_content)
+        intercepted_request.response.is_streaming = True
+        intercepted_request.response.streaming_complete = False
+
+        if self.on_streaming_update:
+            try:
+                self.on_streaming_update(intercepted_request)
+            except Exception:
+                logger.exception("Error in streaming update callback")
+
+    def _finalize_streaming_response(
+        self,
+        intercepted_request: InterceptedRequest,
+        captured_chunks: list[bytes],
+        extracted_content: list[str],
+    ):
+        """Finalize the streaming response after all chunks are processed."""
+        try:
+            full_content = b"".join(captured_chunks).decode("utf-8")
+            intercepted_request.response.raw_body = full_content
+
+            if extracted_content:
+                readable_content = "".join(extracted_content)
+                intercepted_request.response.body = readable_content
+                intercepted_request.response.streaming_content = readable_content
+                logger.debug(
+                    f"Captured {len(full_content)} characters of raw SSE data and extracted {len(readable_content)} characters of readable content"
+                )
+            else:
+                intercepted_request.response.body = full_content
+                intercepted_request.response.streaming_content = full_content
+                logger.debug(
+                    f"Captured {len(full_content)} characters of raw streaming response (no extracted content)"
+                )
+
+            intercepted_request.response.is_streaming = False
+            intercepted_request.response.streaming_complete = True
+
+            self._calculate_response_latency(intercepted_request)
+
+            if self.on_streaming_update:
+                try:
+                    self.on_streaming_update(intercepted_request)
+                except Exception:
+                    logger.exception("Error in final streaming update callback")
+
+        except Exception:
+            logger.exception("Error capturing streaming content")
+
+    def _calculate_response_latency(self, intercepted_request: InterceptedRequest):
+        """Calculate and set the response latency."""
+        try:
+            start_ts = intercepted_request.request.timestamp
+            intercepted_request.response.latency_ms = (
+                datetime.now() - start_ts
+            ).total_seconds() * 1000.0
+        except Exception as e:
+            logger.debug(f"Error calculating latency: {e}")
+
     async def _stream_response_generator(
         self,
         api_response: httpx.Response,
         intercepted_request: InterceptedRequest = None,
     ):
+        """Generate streaming response chunks while capturing content."""
         captured_chunks = []
         extracted_content = []
+
         try:
             async for chunk in api_response.aiter_bytes():
                 if intercepted_request:
                     captured_chunks.append(chunk)
-                    chunk_had_content = False
-                    try:
-                        chunk_text = chunk.decode("utf-8")
-                        for line in chunk_text.split("\n"):
-                            if line.startswith("data: ") and not line.startswith(
-                                "data: [DONE]"
-                            ):
-                                json_data = line[6:]
-                                if json_data.strip():
-                                    data = json.loads(json_data)
-                                    if "choices" in data and len(data["choices"]) > 0:
-                                        delta = data["choices"][0].get("delta", {})
-                                        content = delta.get("content", "")
-                                        if content:
-                                            extracted_content.append(content)
-                                            chunk_had_content = True
-                    except (
-                        json.JSONDecodeError,
-                        UnicodeDecodeError,
-                        KeyError,
-                        IndexError,
-                    ):
-                        pass
+                    chunk_had_content = self._process_chunk_content(
+                        chunk, extracted_content, intercepted_request
+                    )
 
-                    if chunk_had_content and self.on_streaming_update:
-                        intercepted_request.response.streaming_content = "".join(
-                            extracted_content
+                    if chunk_had_content:
+                        self._update_streaming_response(
+                            intercepted_request, extracted_content
                         )
-                        intercepted_request.response.is_streaming = True
-                        intercepted_request.response.streaming_complete = False
-                        try:
-                            self.on_streaming_update(intercepted_request)
-                        except Exception:
-                            logger.exception("Error in streaming update callback")
 
                 yield chunk
+
         except Exception:
             logger.exception("Error while streaming response")
         finally:
             if intercepted_request and captured_chunks:
-                try:
-                    full_content = b"".join(captured_chunks).decode("utf-8")
-                    intercepted_request.response.raw_body = full_content
-                    if extracted_content:
-                        readable_content = "".join(extracted_content)
-                        intercepted_request.response.body = readable_content
-                        intercepted_request.response.streaming_content = (
-                            readable_content
-                        )
-                        logger.debug(
-                            f"Captured {len(full_content)} characters of raw SSE data and extracted {len(readable_content)} characters of readable content"
-                        )
-                    else:
-                        intercepted_request.response.body = full_content
-                        intercepted_request.response.streaming_content = full_content
-                        logger.debug(
-                            f"Captured {len(full_content)} characters of raw streaming response (no extracted content)"
-                        )
-
-                    intercepted_request.response.is_streaming = False
-                    intercepted_request.response.streaming_complete = True
-
-                    try:
-                        start_ts = intercepted_request.request.timestamp
-                        intercepted_request.response.latency_ms = (
-                            datetime.now() - start_ts
-                        ).total_seconds() * 1000.0
-                    except Exception as e:
-                        logger.debug(f"Error calculating latency: {e}")
-
-                    if self.on_streaming_update:
-                        try:
-                            self.on_streaming_update(intercepted_request)
-                        except Exception:
-                            logger.exception("Error in final streaming update callback")
-
-                except Exception:
-                    logger.exception("Error capturing streaming content")
+                self._finalize_streaming_response(
+                    intercepted_request, captured_chunks, extracted_content
+                )
             await api_response.aclose()
 
     def _setup_middleware(self):
