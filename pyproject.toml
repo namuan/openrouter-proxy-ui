@@ -16,13 +16,13 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "PyQt6>=6.5.0",
-    "fastapi>=0.104.0",
-    "uvicorn>=0.24.0",
-    "httpx>=0.25.0",
-    "pydantic>=2.0.0",
-    "python-dotenv>=1.1.1",
-    "defusedxml>=0.7.1",
+    "PyQt6",
+    "fastapi",
+    "uvicorn",
+    "httpx",
+    "pydantic",
+    "python-dotenv",
+    "defusedxml",
 ]
 
 [project.urls]
@@ -31,16 +31,18 @@ Repository = "https://github.com/namuan/openrouter-proxy-ui"
 Documentation = "https://namuan.github.io/openrouter-proxy-ui/"
 
 [project.scripts]
-proxy-interceptor = "proxy_interceptor.main:main"
+openrouter-proxy = "proxy_interceptor.main:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=7.2.0",
-    "pytest-qt>=4.5.0",
-    "pre-commit>=2.20.0",
-    "tox-uv>=1.11.3",
-    "ruff>=0.12.9",
-    "pyinstaller>=6.15.0",
+    "pytest",
+    "pytest-qt",
+    "pre-commit",
+    "tox-uv",
+    "ruff",
+    "pyinstaller",
+    "radon",
+    "xenon",
 ]
 
 [build-system]

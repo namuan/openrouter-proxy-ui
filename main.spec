@@ -32,7 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/or-proxy.icns',
+    icon='assets/icon.icns',
 )
 
 coll = COLLECT(
@@ -49,7 +49,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='OpenRouterProxy.app',
-    icon='assets/or-proxy.icns',
+    icon='assets/icon.icns',
     bundle_identifier='dev.deskriders.openrouter-proxy',
     info_plist={
         'CFBundleName': 'OpenRouterProxy',
