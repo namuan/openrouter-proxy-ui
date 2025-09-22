@@ -64,6 +64,11 @@ class AppConfig(BaseModel):
     auth_tokens: set[str] = Field(default_factory=set)
     port: int = 8080
     auto_restart_enabled: bool = True  # Default to auto-restart enabled
+    http_proxy_url: str = (
+        ""  # HTTP/HTTPS proxy URL (e.g., http://proxy.example.com:8080)
+    )
+    http_proxy_username: str = ""  # Optional proxy username
+    http_proxy_password: str = ""  # Optional proxy password
 
     @field_validator("api_keys")
     @classmethod
@@ -115,6 +120,9 @@ class ConfigWidget(QWidget):
         self.api_models = []
         self.port = 8080
         self.auto_restart_enabled = True
+        self.http_proxy_url = ""
+        self.http_proxy_username = ""
+        self.http_proxy_password = ""
         self._saved_port: int | None = None
         # Store the last saved configuration for comparison
         self._last_saved_config: AppConfig | None = None
@@ -196,6 +204,49 @@ class ConfigWidget(QWidget):
         port_layout.addStretch()
 
         bottom_layout.addWidget(port_group)
+
+        # HTTP Proxy configuration group
+        proxy_group = QGroupBox("HTTP Proxy (Optional)")
+        proxy_layout = QVBoxLayout(proxy_group)
+        proxy_layout.setSpacing(INNER_SPACING)
+
+        # Proxy URL
+        proxy_url_layout = QHBoxLayout()
+        proxy_url_label = QLabel("Proxy URL:")
+        self.proxy_url_input = QLineEdit()
+        self.proxy_url_input.setPlaceholderText("http://proxy.example.com:8080")
+        self.proxy_url_input.setText(self.http_proxy_url)
+        self.proxy_url_input.textChanged.connect(self._on_config_changed)
+        proxy_url_layout.addWidget(proxy_url_label)
+        proxy_url_layout.addWidget(self.proxy_url_input)
+        proxy_layout.addLayout(proxy_url_layout)
+
+        # Proxy credentials (optional)
+        proxy_creds_layout = QHBoxLayout()
+
+        proxy_username_label = QLabel("Username:")
+        self.proxy_username_input = QLineEdit()
+        self.proxy_username_input.setPlaceholderText("Optional")
+        self.proxy_username_input.setText(self.http_proxy_username)
+        self.proxy_username_input.textChanged.connect(self._on_config_changed)
+        self.proxy_username_input.setMaximumWidth(150)
+
+        proxy_password_label = QLabel("Password:")
+        self.proxy_password_input = QLineEdit()
+        self.proxy_password_input.setPlaceholderText("Optional")
+        self.proxy_password_input.setText(self.http_proxy_password)
+        self.proxy_password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.proxy_password_input.textChanged.connect(self._on_config_changed)
+        self.proxy_password_input.setMaximumWidth(150)
+
+        proxy_creds_layout.addWidget(proxy_username_label)
+        proxy_creds_layout.addWidget(self.proxy_username_input)
+        proxy_creds_layout.addWidget(proxy_password_label)
+        proxy_creds_layout.addWidget(self.proxy_password_input)
+        proxy_creds_layout.addStretch()
+        proxy_layout.addLayout(proxy_creds_layout)
+
+        bottom_layout.addWidget(proxy_group)
 
         # Restart notification widget (initially hidden)
         self.restart_notification = self._create_restart_notification()
@@ -392,6 +443,11 @@ class ConfigWidget(QWidget):
         else:
             self.port = 8080
 
+        # Parse proxy fields
+        self.http_proxy_url = self.proxy_url_input.text().strip()
+        self.http_proxy_username = self.proxy_username_input.text().strip()
+        self.http_proxy_password = self.proxy_password_input.text().strip()
+
     def _config_requires_restart(self, new_config: AppConfig) -> bool:
         """Check if configuration changes require proxy restart.
 
@@ -424,6 +480,15 @@ class ConfigWidget(QWidget):
             logger.info("Models changed or reordered, restart required")
             return True
 
+        # Check if proxy settings changed
+        if (
+            old_config.http_proxy_url != new_config.http_proxy_url
+            or old_config.http_proxy_username != new_config.http_proxy_username
+            or old_config.http_proxy_password != new_config.http_proxy_password
+        ):
+            logger.info("Proxy settings changed, restart required")
+            return True
+
         logger.debug("No configuration changes requiring restart detected")
         return False
 
@@ -438,6 +503,9 @@ class ConfigWidget(QWidget):
                     auth_tokens=set(self.auth_tokens),
                     port=int(self.port),
                     auto_restart_enabled=self.auto_restart_enabled,
+                    http_proxy_url=self.http_proxy_url,
+                    http_proxy_username=self.http_proxy_username,
+                    http_proxy_password=self.http_proxy_password,
                 )
             except ValidationError as ve:
                 self.status.emit(
@@ -511,6 +579,9 @@ class ConfigWidget(QWidget):
                 self.auth_tokens = set(cfg.auth_tokens)
                 self.port = int(cfg.port)
                 self.auto_restart_enabled = cfg.auto_restart_enabled
+                self.http_proxy_url = cfg.http_proxy_url
+                self.http_proxy_username = cfg.http_proxy_username
+                self.http_proxy_password = cfg.http_proxy_password
                 self._saved_port = self.port
                 # Store loaded config as the baseline for comparison
                 self._last_saved_config = cfg
@@ -530,6 +601,9 @@ class ConfigWidget(QWidget):
                 self.auto_restart_enabled = loaded.get(
                     "auto_restart_enabled", True
                 )  # Default to True for backward compatibility
+                self.http_proxy_url = loaded.get("http_proxy_url", "")
+                self.http_proxy_username = loaded.get("http_proxy_username", "")
+                self.http_proxy_password = loaded.get("http_proxy_password", "")
                 self._saved_port = self.port
 
             self._update_ui()
@@ -545,6 +619,9 @@ class ConfigWidget(QWidget):
             self.api_models = ["qwen/qwen3-coder:free", "openai/gpt-oss-20b:free"]
             self.auth_tokens = set()
             self.auto_restart_enabled = True  # Default for new installations
+            self.http_proxy_url = ""
+            self.http_proxy_username = ""
+            self.http_proxy_password = ""
             self._update_ui()
             logger.info("No configuration file found, using defaults")
             logger.debug(
@@ -590,6 +667,14 @@ class ConfigWidget(QWidget):
                 self.auto_restart_checkbox, "setChecked"
             ):
                 self.auto_restart_checkbox.setChecked(self.auto_restart_enabled)
+
+            # Update proxy fields
+            if hasattr(self, "proxy_url_input"):
+                self.proxy_url_input.setText(self.http_proxy_url)
+            if hasattr(self, "proxy_username_input"):
+                self.proxy_username_input.setText(self.http_proxy_username)
+            if hasattr(self, "proxy_password_input"):
+                self.proxy_password_input.setText(self.http_proxy_password)
         finally:
             self.api_keys_text.textChanged.connect(self._on_config_changed)
             self.port_input.textChanged.connect(self._on_config_changed)

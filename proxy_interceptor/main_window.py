@@ -123,6 +123,9 @@ class AsyncRunner(QThread):
             cfg_keys = main_window.config_widget.get_api_keys()
             cfg_models = main_window.config_widget.get_api_models()
             cfg_port = int(main_window.config_widget.get_port())
+            cfg_proxy_url = main_window.config_widget.http_proxy_url
+            cfg_proxy_username = main_window.config_widget.http_proxy_username
+            cfg_proxy_password = main_window.config_widget.http_proxy_password
             try:
                 from proxy_interceptor.config_widget import is_port_available
 
@@ -140,6 +143,9 @@ class AsyncRunner(QThread):
                     openrouter_api_models=cfg_models,
                     port=cfg_port,
                     site_url=cfg_site_url,
+                    http_proxy_url=cfg_proxy_url,
+                    http_proxy_username=cfg_proxy_username,
+                    http_proxy_password=cfg_proxy_password,
                 )
                 self.proxy_server = ProxyServer(
                     config,
@@ -151,6 +157,9 @@ class AsyncRunner(QThread):
                 self.proxy_server.config.openrouter_api_models = cfg_models
                 self.proxy_server.config.port = cfg_port
                 self.proxy_server.config.site_url = cfg_site_url
+                self.proxy_server.config.http_proxy_url = cfg_proxy_url
+                self.proxy_server.config.http_proxy_username = cfg_proxy_username
+                self.proxy_server.config.http_proxy_password = cfg_proxy_password
 
             await self.proxy_server.start()
             self.proxy_started.emit()

@@ -36,6 +36,11 @@ class ProxyConfig:
     site_url: str = "http://localhost:8080"
     app_name: str = "OpenRouter Proxy Interceptor"
 
+    # HTTP proxy settings
+    http_proxy_url: str = ""
+    http_proxy_username: str = ""
+    http_proxy_password: str = ""
+
     def __post_init__(self):
         if self.openrouter_api_keys is None:
             self.openrouter_api_keys = []
@@ -674,8 +679,32 @@ class ProxyServer:
                 timeout = httpx.Timeout(60.0, connect=10.0, read=60.0, write=60.0)
             except Exception:
                 timeout = 60.0
-            self._client = httpx.AsyncClient(timeout=timeout)
-            logger.info(f"Initialized upstream HTTP client with timeout={timeout}")
+
+            # Configure proxy settings if provided
+            proxy = None
+            if self.config.http_proxy_url:
+                proxy_url = self.config.http_proxy_url
+                if self.config.http_proxy_username and self.config.http_proxy_password:
+                    # Add authentication to proxy URL
+                    from urllib.parse import urlparse, urlunparse
+
+                    parsed = urlparse(proxy_url)
+                    proxy = urlunparse((
+                        parsed.scheme,
+                        f"{self.config.http_proxy_username}:{self.config.http_proxy_password}@{parsed.netloc}",
+                        parsed.path,
+                        parsed.params,
+                        parsed.query,
+                        parsed.fragment,
+                    ))
+                else:
+                    proxy = proxy_url
+                logger.info(f"Configured HTTP proxy: {proxy_url}")
+
+            self._client = httpx.AsyncClient(timeout=timeout, proxy=proxy)
+            logger.info(
+                f"Initialized upstream HTTP client with timeout={timeout}, proxy={'enabled' if proxy else 'disabled'}"
+            )
 
         attempt = 0
         last_err: Exception | None = None
