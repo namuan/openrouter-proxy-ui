@@ -400,9 +400,9 @@ class ConfigWidget(QWidget):
         self._on_config_changed()
 
     def _on_model_removed(self, model_name):
-        """Handle when a model is automatically removed due to failures."""
-        logger.warning(
-            f"Model '{model_name}' automatically removed from configuration due to excessive failures"
+        """Handle when a model is removed (either by user action or automatically)."""
+        logger.info(
+            f"Model '{model_name}' removed from configuration (user or automatic)"
         )
         if model_name in self.api_models:
             self.api_models.remove(model_name)
@@ -416,8 +416,8 @@ class ConfigWidget(QWidget):
             self._on_config_changed()
             # Show status message to user
             self.status.emit(
-                f"Model '{model_name}' removed due to excessive failures (>5)",
-                "warning",
+                f"Model '{model_name}' removed from selected models",
+                "info",
             )
 
     def _parse_config(self):
