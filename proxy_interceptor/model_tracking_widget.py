@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -103,6 +104,14 @@ class ModelTrackingWidget(QWidget):
         header_layout.addWidget(active_label)
         header_layout.addWidget(self.current_model_indicator)
         header_layout.addWidget(self.current_model_label)
+
+        # Add Remove button to delete selected model
+        self.remove_model_btn = QPushButton("Remove Selected")
+        self.remove_model_btn.setToolTip(
+            "Remove the highlighted model from the selection"
+        )
+        self.remove_model_btn.clicked.connect(self._on_remove_selected_model)
+        header_layout.addWidget(self.remove_model_btn)
 
         selected_models_layout.addLayout(header_layout)
 
@@ -207,6 +216,39 @@ class ModelTrackingWidget(QWidget):
 
         except Exception:
             logger.exception("Error handling model reordering")
+
+    def _on_remove_selected_model(self):
+        """Remove the currently selected model from the list via UI action."""
+        try:
+            current_item = self.selected_models_list.currentItem()
+            if not current_item:
+                logger.info("Remove requested but no model is selected")
+                return
+
+            model_name = current_item.data(Qt.ItemDataRole.UserRole)
+            if not model_name:
+                logger.warning(
+                    "Selected list item does not have a model name payload; aborting removal"
+                )
+                return
+
+            # Remove from internal list if present
+            if model_name in self.selected_models:
+                self.selected_models.remove(model_name)
+                logger.info(f"Removed model from selection via UI: {model_name}")
+            else:
+                logger.info(
+                    f"Model {model_name} not found in internal selected list; still emitting removal"
+                )
+
+            # Update UI list
+            row = self.selected_models_list.row(current_item)
+            self.selected_models_list.takeItem(row)
+
+            # Notify parent (ConfigWidget) to propagate changes and persist
+            self.model_removed.emit(model_name)
+        except Exception:
+            logger.exception("Error while removing selected model")
 
     def _update_model_stats(self):
         """Calculate statistics for each model based on intercepted requests."""
