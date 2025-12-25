@@ -34,6 +34,8 @@ class ModelSelectionWidget(QWidget):
         self.free_models = []
         self.selected_models_ordered = []
         self.checkboxes = []
+        self.previous_model_ids = set()  # Track model IDs from previous refresh
+        self.new_model_ids = set()  # Track newly added models
         self._setup_ui()
 
     def _setup_ui(self):
@@ -83,6 +85,11 @@ class ModelSelectionWidget(QWidget):
 
         previously_selected_set = set(self.selected_models_ordered)
 
+        # Store current model IDs as previous before refresh
+        current_model_ids = {model["id"] for model in self.free_models}
+        if current_model_ids:
+            self.previous_model_ids = current_model_ids
+
         for checkbox in self.checkboxes:
             self.models_layout.removeWidget(checkbox)
             checkbox.deleteLater()
@@ -115,6 +122,15 @@ class ModelSelectionWidget(QWidget):
 
             logger.info(f"Free models found: {len(self.free_models)}")
 
+            # Identify new models by comparing with previous model IDs
+            new_model_ids_after_refresh = {model["id"] for model in self.free_models}
+            self.new_model_ids = new_model_ids_after_refresh - self.previous_model_ids
+
+            if self.new_model_ids:
+                logger.info(
+                    f"New models detected: {len(self.new_model_ids)} - {list(self.new_model_ids)}"
+                )
+
             self.free_models.sort(
                 key=lambda m: (
                     m["id"] not in previously_selected_set,
@@ -136,10 +152,19 @@ class ModelSelectionWidget(QWidget):
                     else "Unknown"
                 )
 
-                checkbox = QCheckBox(f"{name} - Context Length: {context_length_k}")
+                is_new_model = model_id in self.new_model_ids
+                display_text = f"{name} - Context Length: {context_length_k}"
+
+                checkbox = QCheckBox(display_text)
                 checkbox.model_id = model_id
                 checkbox.setChecked(model_id in previously_selected_set)
                 checkbox.stateChanged.connect(self._on_model_selection_changed)
+
+                # Apply subtle left border for new models
+                if is_new_model:
+                    checkbox.setStyleSheet(
+                        "QCheckBox { border-left: 2px solid #90caf9; }"
+                    )
 
                 self.models_layout.addWidget(checkbox)
                 self.checkboxes.append(checkbox)
