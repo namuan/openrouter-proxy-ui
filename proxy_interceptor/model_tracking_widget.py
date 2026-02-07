@@ -81,6 +81,10 @@ class ModelTrackingWidget(QWidget):
         layout.setContentsMargins(*PANEL_MARGINS)
         layout.setSpacing(PANEL_SPACING)
 
+        # Create a horizontal layout for the two sections side by side
+        horizontal_layout = QHBoxLayout()
+        horizontal_layout.setSpacing(PANEL_SPACING)
+
         # Selected Models Section with Active Model Display
         selected_models_group = QGroupBox()
         selected_models_layout = QVBoxLayout(selected_models_group)
@@ -128,7 +132,8 @@ class ModelTrackingWidget(QWidget):
 
         selected_models_layout.addWidget(self.selected_models_list)
 
-        layout.addWidget(selected_models_group)
+        # Add selected models group to horizontal layout with stretch
+        horizontal_layout.addWidget(selected_models_group, 1)
 
         # Model Statistics Section
         stats_group = QGroupBox("Model Statistics")
@@ -161,7 +166,11 @@ class ModelTrackingWidget(QWidget):
 
         stats_layout.addWidget(self.stats_table)
 
-        layout.addWidget(stats_group)
+        # Add stats group to horizontal layout with stretch
+        horizontal_layout.addWidget(stats_group, 1)
+
+        # Add the horizontal layout to the main layout
+        layout.addLayout(horizontal_layout, 1)
 
     def _setup_refresh_timer(self):
         """Set up timer for periodic UI updates."""
