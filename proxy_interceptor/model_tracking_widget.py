@@ -90,34 +90,33 @@ class ModelTrackingWidget(QWidget):
         selected_models_layout = QVBoxLayout(selected_models_group)
         selected_models_layout.setSpacing(INNER_SPACING)
 
-        # Header with title and active model display
-        header_layout = QHBoxLayout()
-        header_layout.setSpacing(INNER_SPACING)
+        # Title row
+        title_layout = QHBoxLayout()
+        title_layout.setSpacing(INNER_SPACING)
 
         title_label = QLabel("Selected Models (Drag to Reorder)")
         title_label.setStyleSheet("font-weight: bold; font-size: 14px;")
 
-        # Active model display inline with title
-        active_label = QLabel("Active:")
+        title_layout.addWidget(title_label)
+        title_layout.addStretch()
+
+        selected_models_layout.addLayout(title_layout)
+
+        # Active model display on the next line
+        active_model_layout = QHBoxLayout()
+        active_model_layout.setSpacing(INNER_SPACING)
+
+        active_label = QLabel("Active Model:")
         self.current_model_indicator = ModelStatusIndicator(ModelProcessStatus.UNKNOWN)
         self.current_model_label = QLabel("No model active")
         self.current_model_label.setStyleSheet("font-weight: bold; color: #2196F3;")
 
-        header_layout.addWidget(title_label)
-        header_layout.addStretch()
-        header_layout.addWidget(active_label)
-        header_layout.addWidget(self.current_model_indicator)
-        header_layout.addWidget(self.current_model_label)
+        active_model_layout.addWidget(active_label)
+        active_model_layout.addWidget(self.current_model_indicator)
+        active_model_layout.addWidget(self.current_model_label)
+        active_model_layout.addStretch()
 
-        # Add Remove button to delete selected model
-        self.remove_model_btn = QPushButton("Remove Selected")
-        self.remove_model_btn.setToolTip(
-            "Remove the highlighted model from the selection"
-        )
-        self.remove_model_btn.clicked.connect(self._on_remove_selected_model)
-        header_layout.addWidget(self.remove_model_btn)
-
-        selected_models_layout.addLayout(header_layout)
+        selected_models_layout.addLayout(active_model_layout)
 
         self.selected_models_list = QListWidget()
         self.selected_models_list.setDragDropMode(QListWidget.DragDropMode.InternalMove)
@@ -194,14 +193,73 @@ class ModelTrackingWidget(QWidget):
         self.selected_models = models.copy()
         self._update_selected_models_display()
 
+    def _create_model_list_item_widget(self, model_name: str) -> QWidget:
+        """Create a widget with model name and delete button for list item."""
+        widget = QWidget()
+        widget.setMinimumHeight(32)
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(8)
+
+        # Model name label
+        label = QLabel(model_name)
+        label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(label, alignment=Qt.AlignmentFlag.AlignVCenter)
+        layout.addStretch()
+
+        # Delete button with icon
+        delete_btn = QPushButton("🗑️")
+        delete_btn.setToolTip(f"Remove {model_name}")
+        delete_btn.setFixedSize(28, 28)
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                border: none;
+                background-color: transparent;
+                font-size: 16px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #ffebee;
+                border-radius: 4px;
+            }
+        """)
+        delete_btn.clicked.connect(lambda: self._on_delete_model_clicked(model_name))
+        layout.addWidget(delete_btn)
+
+        return widget
+
     def _update_selected_models_display(self):
-        """Update the selected models list display."""
+        """Update the selected models list display with delete icons."""
         self.selected_models_list.clear()
 
-        for i, model_name in enumerate(self.selected_models):
-            item = QListWidgetItem(f"{i + 1}. {model_name}")
+        for _i, model_name in enumerate(self.selected_models):
+            item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, model_name)
             self.selected_models_list.addItem(item)
+
+            # Create custom widget with delete button
+            widget = self._create_model_list_item_widget(model_name)
+            self.selected_models_list.setItemWidget(item, widget)
+
+            # Set the size hint based on the widget
+            item.setSizeHint(widget.sizeHint())
+
+    def _on_delete_model_clicked(self, model_name: str):
+        """Handle delete button click for a specific model."""
+        try:
+            if model_name in self.selected_models:
+                self.selected_models.remove(model_name)
+                logger.info(
+                    f"Removed model from selection via delete button: {model_name}"
+                )
+
+            # Update the UI
+            self._update_selected_models_display()
+
+            # Notify parent (ConfigWidget) to propagate changes and persist
+            self.model_removed.emit(model_name)
+        except Exception:
+            logger.exception(f"Error while removing model {model_name}")
 
     def _on_models_reordered(self, parent, start, end, destination, row):
         """Handle when models are reordered via drag and drop."""
@@ -225,39 +283,6 @@ class ModelTrackingWidget(QWidget):
 
         except Exception:
             logger.exception("Error handling model reordering")
-
-    def _on_remove_selected_model(self):
-        """Remove the currently selected model from the list via UI action."""
-        try:
-            current_item = self.selected_models_list.currentItem()
-            if not current_item:
-                logger.info("Remove requested but no model is selected")
-                return
-
-            model_name = current_item.data(Qt.ItemDataRole.UserRole)
-            if not model_name:
-                logger.warning(
-                    "Selected list item does not have a model name payload; aborting removal"
-                )
-                return
-
-            # Remove from internal list if present
-            if model_name in self.selected_models:
-                self.selected_models.remove(model_name)
-                logger.info(f"Removed model from selection via UI: {model_name}")
-            else:
-                logger.info(
-                    f"Model {model_name} not found in internal selected list; still emitting removal"
-                )
-
-            # Update UI list
-            row = self.selected_models_list.row(current_item)
-            self.selected_models_list.takeItem(row)
-
-            # Notify parent (ConfigWidget) to propagate changes and persist
-            self.model_removed.emit(model_name)
-        except Exception:
-            logger.exception("Error while removing selected model")
 
     def _update_model_stats(self):
         """Calculate statistics for each model based on intercepted requests."""
