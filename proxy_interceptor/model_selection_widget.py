@@ -134,7 +134,7 @@ class ModelSelectionWidget(QWidget):
             self.free_models.sort(
                 key=lambda m: (
                     m["id"] not in previously_selected_set,
-                    m.get("name", m["id"]).lower(),
+                    -(m.get("created") or 0),
                 )
             )
 
